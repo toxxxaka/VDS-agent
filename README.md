@@ -1,5 +1,7 @@
 # VDS Agent
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A security-focused, self-hosted monitoring and operations console for Debian servers.
 
 VDS Agent combines a Telegram bot, a hardened HTTPS WebUI, incident tracking, system metrics, controlled administrative actions and isolated privileged helpers.
