@@ -1,0 +1,15 @@
+[Unit]
+Description=Store lightweight Monitoringbot metrics snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=monitorbot
+Group=monitorbot
+WorkingDirectory=/opt/monitoringbot
+ExecStart=/usr/bin/python3 -c "from v4.snapshots import record_metric; record_metric()"
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/monitoringbot

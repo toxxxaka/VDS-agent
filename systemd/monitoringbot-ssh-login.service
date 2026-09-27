@@ -1,0 +1,19 @@
+[Unit]
+Description=Telegram alert for successful SSH logins outside allowlist
+After=systemd-journald.service
+ConditionPathExists=/var/log/auth.log
+
+[Service]
+Type=oneshot
+User=ai
+Group=ai
+SupplementaryGroups=adm
+EnvironmentFile=/etc/monitoringbot/telegram.env
+Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
+Environment=MONITORINGBOT_SSH_ALLOWLIST=/etc/monitoringbot/ssh-allowlist.json
+ExecStart=/usr/bin/python3 /home/ai/monitoringbot/v3.py --check-ssh-logins
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+StateDirectory=monitoringbot
+ReadWritePaths=/var/lib/monitoringbot

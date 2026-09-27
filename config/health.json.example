@@ -1,0 +1,1 @@
+{"interval_seconds":10,"consecutive_samples":3,"reminder_seconds":900,"cpu_percent":90,"load_one":1.0,"per_cpu_load":1.0,"inbound_mbps":50,"inbound_pps":10000,"syn_recv":200,"tcp_connections":2000}

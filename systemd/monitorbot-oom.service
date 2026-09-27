@@ -1,0 +1,13 @@
+[Unit]
+Description=Monitoringbot kernel OOM alerts
+After=systemd-journald.service network-online.target
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
+ExecStart=/usr/bin/python3 /opt/monitoringbot/oom_monitor.py
+Restart=always
+RestartSec=5
+StateDirectory=monitorbot-oom
+[Install]
+WantedBy=multi-user.target

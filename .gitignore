@@ -1,0 +1,48 @@
+# Secrets and private configuration
+.env
+.env.*
+!.env.example
+telegram.env
+auth.json
+health.json
+ssh-allowlist.json
+pass
+credentials*
+secrets*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Runtime state
+server_status.json
+*_state.json
+pending_*.json
+*.log
+*.pid
+
+# Databases
+*.db
+*.sqlite*
+
+# Python/cache/virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Backup and obsolete editor files
+*.bak
+*.backup
+*.old
+v4/webapp.before_*.py
+
+# Obsolete application files
+v1.py
+v2.py
+systemd-service
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

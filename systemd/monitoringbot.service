@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram monitoring bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ai
+Group=ai
+EnvironmentFile=/etc/monitoringbot/telegram.env
+Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
+Environment=MONITORINGBOT_SSH_ALLOWLIST=/etc/monitoringbot/ssh-allowlist.json
+Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot/auth.json
+WorkingDirectory=/home/ai/monitoringbot
+ExecStart=/usr/bin/python3 /home/ai/monitoringbot/v3.py
+Restart=always
+RestartSec=10
+StateDirectory=monitoringbot
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/monitoringbot
+
+[Install]
+WantedBy=multi-user.target

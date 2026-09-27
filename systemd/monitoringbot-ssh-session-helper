@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Root-only helper for listing and terminating authenticated sshd session leaves."""
+import json, os, re, signal, sys
+
+SESSION = re.compile(r"^sshd:\s+([^@\s]+)@(\S+)$")
+
+def stat(pid):
+    raw = open(f"/proc/{pid}/stat").read()
+    tail = raw[raw.rfind(")") + 2:].split()
+    return int(tail[1]), tail[19]  # ppid, field 22 starttime
+
+def session(pid):
+    if not pid.isdigit() or int(pid) <= 1:
+        return None
+    try:
+        cmd = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode().strip()
+        match = SESSION.fullmatch(cmd)
+        ppid, starttime = stat(pid)
+        exe = os.readlink(f"/proc/{pid}/exe")
+        uid = next(line.split()[1] for line in open(f"/proc/{pid}/status") if line.startswith("Uid:"))
+    except (OSError, StopIteration, ValueError):
+        return None
+    if not match or not exe.endswith("/sshd"):
+        return None
+    # A live session leaf must be descended from an sshd process.
+    ancestor = ppid
+    for _ in range(8):
+        if ancestor <= 1:
+            return None
+        try:
+            if os.readlink(f"/proc/{ancestor}/exe").endswith("/sshd"):
+                return {"id": f"{pid}:{starttime}", "pid": int(pid), "user": match.group(1), "tty": match.group(2), "uid": uid}
+            ancestor, _ = stat(str(ancestor))
+        except (OSError, ValueError):
+            return None
+    return None
+
+def sessions():
+    rows = []
+    for item in os.listdir("/proc"):
+        value = session(item)
+        if value:
+            rows.append(value)
+    return sorted(rows, key=lambda row: row["pid"])
+
+def main():
+    if len(sys.argv) == 2 and sys.argv[1] == "list":
+        print(json.dumps(sessions(), separators=(",", ":")))
+        return 0
+    if len(sys.argv) == 3 and sys.argv[1] == "terminate" and re.fullmatch(r"[1-9]\d*:\d+", sys.argv[2]):
+        pid, starttime = sys.argv[2].split(":", 1)
+        value = session(pid)
+        if not value or value["id"] != sys.argv[2]:
+            return 65
+        os.kill(int(pid), signal.SIGTERM)
+        return 0
+    return 64
+
+raise SystemExit(main())

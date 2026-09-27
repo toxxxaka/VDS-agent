@@ -1,0 +1,18 @@
+[Unit]
+Description=Send daily Telegram monitoring report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=monitorbot
+Group=monitorbot
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
+Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
+Environment=MONITORINGBOT_SSH_ALLOWLIST=/etc/monitoringbot/ssh-allowlist.json
+Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
+WorkingDirectory=/opt/monitoringbot
+ExecStart=/usr/bin/python3 /opt/monitoringbot/v3.py --daily-report
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/monitoringbot

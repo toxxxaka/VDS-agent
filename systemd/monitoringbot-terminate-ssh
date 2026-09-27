@@ -1,0 +1,21 @@
+#!/bin/sh
+# Root helper: accepts only the PID of a live authenticated sshd child process.
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    exit 64
+fi
+case "$1" in
+    ''|*[!0-9]*) exit 64 ;;
+esac
+if [ "$1" -le 1 ]; then
+    exit 64
+fi
+
+args=$(/usr/bin/ps -p "$1" -o args= 2>/dev/null || true)
+case "$args" in
+    'sshd: '*@*) ;;
+    *) exit 65 ;;
+esac
+
+/bin/kill -TERM -- "$1"

@@ -1,0 +1,8 @@
+{
+  "allowed_user_ids": ["123456789"],
+  "web_allowed_ips": ["192.0.2.10/32", "198.51.100.10/32", "203.0.113.10/32"],
+  "totp_secret": "REPLACE_WITH_A_NEW_BASE32_TOTP_SECRET",
+  "session_seconds": 3600,
+  "max_failures": 5,
+  "lockout_seconds": 900
+}

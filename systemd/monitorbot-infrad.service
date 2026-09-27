@@ -1,0 +1,17 @@
+[Unit]
+Description=Monitoringbot constrained infrastructure bridge
+After=network-online.target
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/monitorbot-infrad
+Restart=always
+RestartSec=3
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/monitoringbot /run/monitorbot
+[Install]
+WantedBy=multi-user.target

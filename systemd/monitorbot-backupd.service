@@ -1,0 +1,21 @@
+[Unit]
+Description=Monitoringbot constrained root backup bridge
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /usr/local/libexec/monitorbot-backupd
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/root/backups /mnt /media -/run/media /run/monitorbot
+RuntimeDirectory=monitorbot
+RuntimeDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

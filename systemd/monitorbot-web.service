@@ -1,0 +1,24 @@
+[Unit]
+Description=Monitoringbot v4 Telegram Mini App backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monitorbot
+Group=monitorbot
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
+Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
+Environment=MONITORINGBOT_WEB_PORT=8787
+WorkingDirectory=/opt/monitoringbot
+ExecStart=/usr/bin/python3 -m v4.webapp
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/monitoringbot
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Monitoringbot CPU and network alerts
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=monitorbot
+Group=monitorbot
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
+Environment=MONITORINGBOT_HEALTH_CONFIG=/etc/monitoringbot-main/health.json
+Environment=MONITORINGBOT_HEALTH_STATE=/var/lib/monitoringbot/health_state.json
+ExecStart=/usr/bin/python3 /opt/monitoringbot/health_monitor.py
+Restart=always
+RestartSec=5
+StateDirectory=monitoringbot
+[Install]
+WantedBy=multi-user.target

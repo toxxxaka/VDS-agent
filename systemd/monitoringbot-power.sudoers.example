@@ -1,0 +1,2 @@
+# Install as /etc/sudoers.d/monitoringbot-power with mode 0440 after validating with visudo.
+ai ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/local/libexec/monitoringbot-ssh-session-helper list, /usr/local/libexec/monitoringbot-ssh-session-helper terminate *
