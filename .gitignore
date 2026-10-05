@@ -46,3 +46,6 @@ systemd-service
 .vscode/
 .idea/
 .DS_Store
+
+# Local implementation reports
+enhancing-github-sync-*-05-10.md

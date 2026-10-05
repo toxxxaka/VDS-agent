@@ -8,6 +8,7 @@ Type=simple
 User=monitorbot
 Group=monitorbot
 EnvironmentFile=/etc/monitoringbot-main/telegram.env
+EnvironmentFile=-/etc/monitoringbot-main/timeweb-ai.env
 Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
 Environment=MONITORINGBOT_WEB_PORT=8787
 WorkingDirectory=/opt/monitoringbot

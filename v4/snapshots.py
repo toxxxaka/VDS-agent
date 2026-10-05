@@ -6,6 +6,7 @@ import time
 
 import psutil
 
+from .metrics import cpu_percent
 from .storage import connect
 
 SERVICE_NAMES = ("nginx", "ssh", "docker", "fail2ban", "mariadb", "mysql", "redis-server")
@@ -32,7 +33,7 @@ def overview():
     return {
         "time": time.time(),
         "hostname": os.uname().nodename,
-        "cpu": {"percent": psutil.cpu_percent(interval=0.1), "cores": psutil.cpu_count() or 0, "load": list(os.getloadavg())},
+        "cpu": {"percent": cpu_percent(), "cores": psutil.cpu_count() or 0, "load": list(os.getloadavg())},
         "memory": {"total": memory.total, "available": memory.available, "used": memory.used, "cached": getattr(memory, "cached", 0), "percent": memory.percent, "swap_percent": swap.percent},
         "disk": {"total": disk.total, "used": disk.used, "free": disk.free, "percent": disk.percent},
         "network": {"bytes_sent": net.bytes_sent, "bytes_recv": net.bytes_recv, "packets_sent": net.packets_sent, "packets_recv": net.packets_recv, "errin": net.errin, "errout": net.errout, "dropin": net.dropin, "dropout": net.dropout},
@@ -58,7 +59,5 @@ def capture(kind):
 
 
 def record_metric():
-    data = overview()
-    with connect() as connection:
-        cursor = connection.execute("INSERT INTO snapshots(time,kind,data) VALUES(?,?,?)", (time.time(), "periodic", json.dumps(data)))
-        return cursor.lastrowid
+    from .metrics import record
+    return record()

@@ -1,52 +1,69 @@
-# Monitoringbot v4 — техническое описание
+# Monitoringbot v4 — architecture
 
-## Назначение
+## Purpose
 
-Monitoringbot — защищённая консоль наблюдения и управляемых операций Debian-сервера. Она работает через Telegram-бота и HTTPS WebUI. Система рассчитана на одного или несколько явно разрешённых владельцев, а не на публичный мониторинг.
+VDS Agent is a protected personal monitoring console for one Debian server. It combines Telegram operations with an HTTPS browser/Mini App console. It is not a multi-tenant monitoring service.
 
-## Доступ и защита
+## Components
 
-WebUI принимает Telegram Mini App `initData` с серверной HMAC-проверкой, проверяет Telegram user ID, срок `auth_date`, затем требует TOTP. Обычный браузер допускается только с IP из `web_allowed_ips` и проходит тот же TOTP. Сессии серверные, живут один час, записаны в SQLite и помечаются HttpOnly, Secure, SameSite=Strict cookie. Nginx ограничивает WebUI тем же IP allow-list.
+```text
+Telegram bot (v3.py)                     HTTPS / Telegram Mini App
+      │                                               │
+      ├── commands and notifications                  └── v4/webapp.py
+      ├── SSH login monitor                                   │
+      └── daily report
 
-Все действия пишутся в `audit_log`; секреты, TOTP, токен Telegram и confirmation tokens туда не попадают.
+Timeweb AI Agent ◄── server-only v4/ai.py ◄── authenticated `/api/ai/chat`                                         ├── v4/ui/ (HTML, CSS, JS)
+                                                                  ├── metrics.py
+Health monitor ──────► incidents.py ──────► SQLite/WAL ◄───────┤
+OOM monitor ─────────► snapshots.py (incident context)         ├── backups/library/firewall/tools
+Snapshot timer ──────► metrics.py (one cheap point/minute)     └── restricted helpers
+```
 
-## Данные и надёжность
+The AI proxy uses the configured private OpenAI-compatible endpoint only from the backend. It forwards the current browser chat history as `user` and `assistant` messages and streams OpenAI SSE deltas back to the authenticated browser. It sends no system prompt, server telemetry, incident data, secrets, or browser credentials. It is deliberately structured as a separate module so a later context provider can be introduced without changing the chat UI or authentication route.
 
-SQLite находится в `/var/lib/monitoringbot/monitoring.db`, использует WAL. Таблицы: `incidents`, `incident_events`, `snapshots`, `audit_log`, `pending_actions`, `command_runs`. Incidents и snapshots переживают рестарт. Legacy JSON сохраняется только как миграционный источник и конфигурация.
+The WebUI is intentionally split into a small Python HTTP/API layer and static `v4/ui/index.html`, `app.css`, and `app.js`. This keeps API/security code separate from layout, interaction, Canvas rendering and mobile presentation. No frontend framework is required.
 
-## Мониторинг
+## Authentication and privileges
 
-- CPU, load average, memory, swap, disk, network, сервисы.
-- Периодические snapshots каждую минуту: CPU, RAM/cache, I/O, RX/TX.
-- Графики за час, день и неделю, фиксированная или адаптивная шкала.
-- Incident Engine: active/recovered/closed, warning/high/critical, deduplication, hysteresis, cooldown, acknowledgement и close.
-- CPU/load, OOM, высокий входящий трафик, SSH login alerts, ежедневный отчёт в 06:00 UTC.
+The server validates Telegram Mini App `initData` using Telegram's HMAC scheme and checks the configured user allow-list and a five-minute `auth_date` window. Direct browser access is allowed only from configured trusted IP networks. Both paths require TOTP before any data API is available. Sessions are server-side SQLite records with a one-hour expiry; cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`.
 
-## Telegram
+All actions are audit logged. Secrets, TOTP values, Telegram credentials, session data and confirmation tokens are excluded from audit records. The browser has no arbitrary shell endpoint. Destructive actions use short-lived confirmations and narrowly scoped root helpers.
 
-Сохранены `/status`, `/daily`, `/ping`, `/cpu`, `/ram`, `/disk`, `/load`, `/uptime`, `/sessions`, `/sshlogins`, `/killssh`, `/reboot`, `/shutdown`, `/logout`. Опасные команды требуют отдельного подтверждения. SSH-сессии перечисляются и завершаются только через ограниченный helper.
+## Persistent data
 
-## WebUI
+`/var/lib/monitoringbot/monitoring.db` runs in SQLite WAL mode. The Timeweb endpoint and token stay in `/etc/monitoringbot-main/timeweb-ai.env`; they are never stored in this DB.
 
-Dashboard, Incidents, Activity, Statistics, Tools, Backups, Client scripts, Firewall, внешние проверки. Интерфейс mobile-first: safe areas, 16px inputs, touch-action, press feedback, reduced motion, семантические статусы и доступные цветовые контрасты.
+| Data | Table | Purpose |
+| --- | --- | --- |
+| Incidents | `incidents`, `incident_events` | Event lifecycle, severity, timestamps and context |
+| Incident context | `snapshots` | Lightweight diagnostic snapshot only when an incident occurs |
+| Historical metrics | `metric_samples` | Raw local counters for charts; independent of incident snapshots |
+| Actions | `audit_log`, `command_runs`, `pending_actions` | Audit history, diagnostics and short-lived confirmations/sessions |
 
-## Инструменты
+On first start of this revision, `metric_samples` and its time index are created without deleting `snapshots`. Existing `recovered` incidents are logically migrated to `closed`, keeping `recovered_at` intact.
 
-- Backup: rsync в датированную директорию, metadata.json и backup.log; локальное `/root/backups` или подключённый носитель.
-- Client scripts: просмотр, копирование или одноразовая wget-ссылка на десять минут.
-- Password generator: криптографически случайный `5-6-7` из букв, цифр и символов.
-- SSL: TLS protocol, cipher, issuer, expiry и days left.
-- Check-Host: HTTP/ping/TCP/DNS с несколькими внешними узлами.
-- Cheburcheck: безопасная ссылка проверки домена/IP на блокировки.
+## Metric collection and chart API
 
-## Firewall
+The existing `monitorbot-snapshot.timer` remains the collector cadence: once per minute. CPU is measured across a one-second interval to avoid falsely treating a short scheduler burst as a full-minute 100% load. It reads only local `psutil` counters: CPU percentage/load, RAM/cache/available, filesystem usage, network byte counters and disk read/write counters. It does not run service checks, external requests, or diagnostic commands for each point.
 
-WebUI никогда не запускает `sudo`/`nft`. Root bridge `monitorbot-infrad.service` принимает фиксированный протокол по Unix socket только от `monitorbot`. Он показывает текущий ruleset, создаёт snapshot, preview и применяет собственную таблицу `inet monitoringbot`, не перезаписывая Docker или другие nftables tables. Профили: none, standard, hard. Hard предлагает IP запроса и переключатель сохранения HTTPS; откатывается через 120 секунд, пока WebUI не подтвердит соединение.
+`metrics.record()` retains 30 days and labels the new one-second collector as telemetry version 2. Existing short-window samples remain stored as legacy history but are excluded from version-2 charts, so inaccurate 100% points do not contaminate the new series. It and deletes expired points during normal collection. `/api/metrics?range=1h|6h|24h|7d|30d` returns at most 360 visual points. Downsampling preserves per-bucket CPU and rate peaks, and emits the newest gauge values. Counter deltas are clamped to zero after reboot/interface/disk counter resets, so client charts never receive negative rates.
 
-## Привилегии
+The UI paints Canvas charts for CPU, memory, RX/TX and disk I/O. It supplies axis units, legends, timestamps, hover/touch tooltips and a LIVE indicator derived from the last stored sample timestamp. It schedules the next fetch for the expected collector cycle, marks data stale if no sample appears within two cycles, and refreshes immediately when the document returns from the background.
 
-Сервисы имеют `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`, `ProtectHome` и минимальные `ReadWritePaths`. Root доступен только узким helpers: backup bridge, firewall bridge, SSH terminate helper и заранее определённые power actions. Пользовательский ввод не передаётся в shell; subprocess использует argument arrays.
+## Incident lifecycle
 
-## Ограничение консоли
+A healthy sample does not create an event. An unhealthy condition opens a single `active` incident, with later unhealthy samples updating the same record. Recovery changes it to `closed`, stores both `recovered_at` and `closed_at`, and lets the health monitor send a recovery notification. If the condition returns later, a new incident is created. This preserves complete recovery history without an acknowledgement workflow in the UI.
 
-В проекте нет произвольного браузерного root shell. Для аварийного доступа используются SSH/консоль провайдера и подтверждённые allow-listed операции. Это исключает превращение WebUI в удалённый root endpoint.
+Tools → Server events offers All, Open and Closed views. **Close all** is an explicit manual action for active records. The UI warns that a condition still detected by the monitor can create another incident later.
+
+## Main UI navigation
+
+- **Dashboard**: compact current CPU, RAM, disk usage, network counters, active problems, primary service state and recent diagnostics.
+- **Metrics**: historical charts and live refresh.
+- **AI**: private Timeweb Agent chat via the authenticated backend proxy, with New chat, Stop generation, streaming states and local current-chat history.
+- **Tools**: Server events, Activity/audit, diagnostics, backups, client script library, network/security checks, firewall and power actions.
+
+## Operational health
+
+`v4/self_monitoring.py` is an authenticated operator-facing read model. It performs bounded local checks only and does not expose configuration values, tokens, or database contents. A stale metric indicates collector lag rather than an attempt to infer host availability.

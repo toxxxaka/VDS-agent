@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS incident_events(id INTEGER PRIMARY KEY,incident_id IN
 CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY,time REAL NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY,time REAL NOT NULL,user_id TEXT,action TEXT NOT NULL,target TEXT,result TEXT NOT NULL,details TEXT);
 CREATE TABLE IF NOT EXISTS pending_actions(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,user_id TEXT,target TEXT,expires_at REAL NOT NULL,data TEXT);
+CREATE TABLE IF NOT EXISTS metric_samples(id INTEGER PRIMARY KEY,time REAL NOT NULL,cpu REAL NOT NULL,load1 REAL NOT NULL,mem_used INTEGER NOT NULL,mem_cached INTEGER NOT NULL,mem_available INTEGER NOT NULL,disk_used INTEGER NOT NULL,disk_total INTEGER NOT NULL,rx INTEGER NOT NULL,tx INTEGER NOT NULL,read_bytes INTEGER NOT NULL,write_bytes INTEGER NOT NULL,sample_version INTEGER NOT NULL DEFAULT 2);
+CREATE INDEX IF NOT EXISTS ix_metric_samples_time ON metric_samples(time);
 CREATE TABLE IF NOT EXISTS command_runs(id TEXT PRIMARY KEY,command TEXT NOT NULL,title TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','timeout','cancelled')),user_id TEXT NOT NULL,started_at REAL NOT NULL,finished_at REAL,duration_ms INTEGER,exit_code INTEGER,stdout TEXT NOT NULL DEFAULT '',stderr TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS ix_incidents_status_seen ON incidents(status,last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS ix_events_incident_time ON incident_events(incident_id,time DESC);
@@ -18,7 +20,12 @@ CREATE INDEX IF NOT EXISTS ix_command_runs_started ON command_runs(started_at DE
 CREATE INDEX IF NOT EXISTS ix_command_runs_status ON command_runs(status,started_at DESC);
 '''
 def connect(path=DB):
- path.parent.mkdir(parents=True,exist_ok=True); c=sqlite3.connect(path,timeout=10); c.row_factory=sqlite3.Row; c.executescript(SCHEMA); return c
+ path.parent.mkdir(parents=True,exist_ok=True); c=sqlite3.connect(path,timeout=10); c.row_factory=sqlite3.Row; c.executescript(SCHEMA)
+ # v2 telemetry uses a one-second CPU measurement. Preserve older points but do not mix
+ # their short-window readings with the new time series.
+ fields={row[1] for row in c.execute("PRAGMA table_info(metric_samples)")}
+ if "sample_version" not in fields: c.execute("ALTER TABLE metric_samples ADD COLUMN sample_version INTEGER NOT NULL DEFAULT 1")
+ c.execute("UPDATE incidents SET status='closed',closed_at=COALESCE(closed_at,recovered_at) WHERE status='recovered'"); return c
 def rows(q,args=(),path=DB):
  with connect(path) as c:return [dict(x) for x in c.execute(q,args)]
 def audit(user,action,target='',result='ok',details=None,path=DB):

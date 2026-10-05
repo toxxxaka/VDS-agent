@@ -19,20 +19,14 @@ The project is designed for private infrastructure management — not as a publi
 - TCP connection and SYN-RECV tracking
 - Linux OOM killer detection
 - SSH login monitoring
-- Periodic system snapshots
-- Hour, day and week statistics
+- Lightweight local metric history with 30-day retention
+- Interactive 1h, 6h, 24h and 7d historical charts
+- Incident diagnostic snapshots kept separately from metric history
 - Recovery notifications and alert cooldowns
 
 ### Incident management
 
-The built-in Incident Engine tracks operational events through their lifecycle:
-
-- active
-- recovered
-- acknowledged
-- closed
-
-Incidents support severity levels, deduplication, hysteresis, cooldowns and links to system snapshots captured around the event.
+The Incident Engine opens one event per active condition, records every observation, and automatically closes it when the condition recovers. Recovery time and diagnostic snapshots remain in history. Existing acknowledgement APIs remain compatible, but acknowledgement is intentionally absent from the WebUI. Manual **Close all** is available from Server events; a persistent condition opens a new event on a later health sample.
 
 ### Telegram
 
@@ -57,10 +51,10 @@ Sensitive operations require explicit confirmation.
 
 The mobile-first HTTPS WebUI provides:
 
-- Dashboard
-- Incidents
-- Activity
-- Statistics
+- Compact Dashboard
+- Live Metrics (1h, 6h, 24h, 7d)
+- Private Timeweb AI Agent chat through a server-side streaming proxy
+- Tools, including Server events and Activity
 - Diagnostics
 - Backup management
 - Client script library
@@ -133,6 +127,8 @@ v4/webapp.py
    ├── storage.py
    ├── incidents.py
    ├── snapshots.py
+   ├── metrics.py          # lightweight local time-series
+   ├── ui/                 # maintainable HTML/CSS/JS WebUI
    ├── tasks.py
    ├── backups.py
    ├── library.py
@@ -188,7 +184,7 @@ Production configuration is expected outside the source tree, for example:
 /etc/monitoringbot/ssh-allowlist.json
 ```
 
-See the sanitized examples in `config/`.
+See the sanitized examples in `config/`, including `timeweb-ai.env.example` for the optional AI integration.
 
 ## Deployment
 
@@ -201,8 +197,6 @@ The recommended production layout separates source code, runtime state and secre
 ```
 
 systemd unit examples are available under `systemd/`.
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full installation procedure.
 
 ## Development workflow
 
@@ -221,7 +215,6 @@ Production changes should reach `prod` through reviewed merges rather than direc
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Deployment](docs/DEPLOYMENT.md)
 - [Firewall model](docs/FIREWALL.md)
 - [Security policy](SECURITY.md)
 
@@ -229,7 +222,7 @@ Production changes should reach `prod` through reviewed merges rather than direc
 
 VDS Agent is under active development.
 
-Interfaces, configuration formats and deployment procedures may change before the first stable release.
+The Metrics collector uses local SQLite telemetry and the AI chat requires an explicitly configured private Timeweb Agent endpoint.
 
 ## Security notice
 
@@ -238,3 +231,7 @@ This software can perform privileged server operations including firewall change
 Review all service files, helpers, sudo rules and network restrictions before deploying it to a production server.
 
 Never commit real Telegram tokens, TOTP secrets, private keys or production authentication files.
+
+## Self-monitoring
+
+Authenticated operators can read `GET /api/self-monitoring` and the Dashboard payload. It reports the health of the Monitoringbot services/timer, metric freshness (180 seconds), successful backup freshness (7 days), recent failed internal commands, and SQLite/WAL integrity and size. It exposes no secrets.
