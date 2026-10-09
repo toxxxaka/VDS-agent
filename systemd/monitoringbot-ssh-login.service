@@ -5,13 +5,14 @@ ConditionPathExists=/var/log/auth.log
 
 [Service]
 Type=oneshot
-User=ai
-Group=ai
+User=monitorbot
+Group=monitorbot
 SupplementaryGroups=adm
-EnvironmentFile=/etc/monitoringbot/telegram.env
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
 Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
 Environment=MONITORINGBOT_SSH_ALLOWLIST=/etc/monitoringbot/ssh-allowlist.json
-ExecStart=/usr/bin/python3 /home/ai/monitoringbot/v3.py --check-ssh-logins
+WorkingDirectory=/opt/monitoringbot
+ExecStart=/usr/bin/python3 /opt/monitoringbot/v3.py --check-ssh-logins
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full
