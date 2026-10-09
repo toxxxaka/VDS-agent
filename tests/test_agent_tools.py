@@ -56,13 +56,14 @@ class AgentToolTests(unittest.TestCase):
         self.assertEqual(agent_tools._unit("monitoringbot.service"), "monitoringbot.service")
 
     def test_admin_action_requires_second_owner_bound_confirmation(self):
-        first = agent_tools.admin_action({"action": "restart_web"}, actor="telegram:42")
-        self.assertTrue(first["confirmation_required"])
-        with self.assertRaises(agent_tools.ToolError):
-            agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:43")
-        second = agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:42")
+        with patch.object(agent_tools, "_run", return_value={"ok": False, "error": "bridge unavailable"}):
+            first = agent_tools.admin_action({"action": "restart_web"}, actor="telegram:42")
+            self.assertTrue(first["confirmation_required"])
+            with self.assertRaises(agent_tools.ToolError):
+                agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:43")
+            second = agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:42")
         self.assertFalse(second["ok"])
-        self.assertIn("bridge", second["error"])
+        self.assertIn("bridge", second["detail"])
 
     def test_network_rejects_private_resolution(self):
         with patch.object(agent_tools.socket, "getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 0))]):
