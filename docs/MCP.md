@@ -66,7 +66,7 @@ ICMP is kept as a diagnostic check. Missing ICMP alone can never produce `DOWN`.
 
 ## Installation order
 
-1. Install dependencies from `requirements.txt` in the production Python environment.
+1. Create the dedicated `/opt/monitoringbot/venv` and install dependencies from `requirements.txt` there.
 2. Create private `mcp.env` and `servers.json` from examples with mode `0640`, owned by `root:monitorbot`.
 3. Install the reviewed `monitorbot-mcp.service`, helper and sudoers files.
 4. Install the dedicated nginx vhost, obtain the certificate, then test nginx before reload.

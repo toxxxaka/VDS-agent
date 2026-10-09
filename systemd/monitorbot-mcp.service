@@ -14,7 +14,7 @@ Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
 Environment=MONITORINGBOT_SERVERS_CONFIG=/etc/monitoringbot-main/servers.json
 Environment=MONITORINGBOT_MCP_PORT=8793
 WorkingDirectory=/opt/monitoringbot
-ExecStart=/usr/bin/python3 -m v4.mcp_http
+ExecStart=/opt/monitoringbot/venv/bin/python -m v4.mcp_http
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes
