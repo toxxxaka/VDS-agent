@@ -67,3 +67,12 @@ Tools → Server events offers All, Open and Closed views. **Close all** is an e
 ## Operational health
 
 `v4/self_monitoring.py` is an authenticated operator-facing read model. It performs bounded local checks only and does not expose configuration values, tokens, or database contents. A stale metric indicates collector lag rather than an attempt to infer host availability.
+
+
+## MCP and Telegram AI
+
+`v4/agent_tools.py` is the only diagnostic/action backend used by both `v4/mcp_http.py` and `v4/telegram_ai.py`. It uses fixed argv subprocess calls, typed bounds, timeouts, redaction and audit records. It never provides a shell or a generic filesystem operation. The MCP server is a separate localhost-only Streamable HTTP service protected by a distinct Bearer token.
+
+Telegram `/ai` builds a bounded diagnostic plan from the request, runs these local tools, then sends compact evidence to the already configured private Timeweb Agent for interpretation. Context lives only in process memory for 30 minutes. Controlled actions use a database-backed, caller-bound 90-second confirmation.
+
+Availability state is implemented in `v4/availability.py`. The private server configuration declares TCP ports and optional HTTP endpoints. ICMP is reported as a diagnostic signal and cannot alone mark a server DOWN.

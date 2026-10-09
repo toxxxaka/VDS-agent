@@ -143,8 +143,9 @@ def command_result(command):
         data = bot.servers()
         text = ["Server availability"]
         for name, item in data.items():
-            text.append(f"{'UP' if item['alive'] else 'NO ICMP'}  {name}: {item['ip']}")
-        text.append("No ICMP reply does not necessarily mean that a server is unavailable.")
+            checks = ", ".join(f"{check['kind'].upper()}{('/' + str(check['port'])) if check.get('port') else ''}: {'ok' if check['ok'] else 'fail'}" for check in item["checks"])
+            text.append(f"{item['status']}  {name}: {item['host']}\n{checks}")
+        text.append("ICMP is diagnostic only. DOWN requires repeated failed configured TCP/HTTP checks.")
         return {"title": "Server availability", "text": "\n".join(text)}
     if command == "cpu":
         temperature = bot.cpu_temperature()

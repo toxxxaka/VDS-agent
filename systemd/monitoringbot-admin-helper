@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Root-owned allow-list bridge for explicitly confirmed VDS-Agent actions."""
+import os
+import sys
+
+ACTIONS = {
+    "restart_monitoringbot": ("/usr/bin/systemctl", "restart", "monitoringbot.service"),
+    "restart_web": ("/usr/bin/systemctl", "restart", "monitorbot-web.service"),
+    "restart_health": ("/usr/bin/systemctl", "restart", "monitorbot-health.service"),
+    "reboot": ("/usr/bin/systemctl", "reboot"),
+    "poweroff": ("/usr/bin/systemctl", "poweroff"),
+}
+
+
+def main() -> int:
+    if os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ACTIONS:
+        return 64
+    os.execv(ACTIONS[sys.argv[1]][0], list(ACTIONS[sys.argv[1]]))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

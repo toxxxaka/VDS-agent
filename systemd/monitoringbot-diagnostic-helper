@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Root-owned bounded journal reader for VDS-Agent AI diagnostics."""
+import os
+import re
+import sys
+
+UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "nginx.service", "ssh.service", "docker.service"}
+DIGITS = re.compile(r"[0-9]+")
+
+
+def number(value: str, maximum: int) -> int:
+    if not DIGITS.fullmatch(value):
+        raise ValueError
+    number = int(value)
+    if not 1 <= number <= maximum:
+        raise ValueError
+    return number
+
+
+def main() -> int:
+    if os.geteuid() != 0 or len(sys.argv) != 5 or sys.argv[1] != "journal" or sys.argv[2] not in UNITS:
+        return 64
+    try:
+        lines = number(sys.argv[3], 100)
+        minutes = number(sys.argv[4], 1440)
+    except ValueError:
+        return 64
+    os.execv("/usr/bin/journalctl", ["/usr/bin/journalctl", "--no-pager", "--output=short-iso", "--unit", sys.argv[2], "--since", f"{minutes} minutes ago", "--lines", str(lines)])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added a shared bounded diagnostics backend for Streamable HTTP MCP and Telegram `/ai`.
+- Added bearer-protected MCP transport, deployment templates and dedicated documentation.
+- Added Telegram AI multi-step diagnostics using the existing private Timeweb Agent, with short-lived caller-bound action confirmation.
+- Reworked remote availability into configurable repeated ICMP/TCP/HTTP checks with `UP`, `DEGRADED`, `DOWN` and `UNKNOWN` states.
+- Added regression and integration coverage for MCP auth, Telegram AI, controlled actions and availability failure modes.
+
 All notable changes to VDS Agent will be documented here.
 
 ## [Unreleased]

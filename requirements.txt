@@ -1,2 +1,4 @@
 psutil
 requests
+mcp>=1.12,<2
+uvicorn>=0.30,<1

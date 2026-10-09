@@ -37,13 +37,14 @@ Available functionality includes:
 - server status
 - CPU, RAM, disk and load statistics
 - uptime
-- remote server availability checks
+- remote availability checks with ICMP diagnostics and configurable TCP/HTTP health checks
 - active SSH sessions
 - external SSH login alerts
 - incident management
 - controlled SSH session termination
 - reboot and shutdown operations
 - daily server reports
+- `/ai` natural-language diagnostics through the private Timeweb Agent
 
 Sensitive operations require explicit confirmation.
 
@@ -54,6 +55,7 @@ The mobile-first HTTPS WebUI provides:
 - Compact Dashboard
 - Live Metrics (1h, 6h, 24h, 7d)
 - Private Timeweb AI Agent chat through a server-side streaming proxy
+- Bearer-protected Streamable HTTP MCP for ChatGPT
 - Tools, including Server events and Activity
 - Diagnostics
 - Backup management
@@ -184,7 +186,9 @@ Production configuration is expected outside the source tree, for example:
 /etc/monitoringbot/ssh-allowlist.json
 ```
 
-See the sanitized examples in `config/`, including `timeweb-ai.env.example` for the optional AI integration.
+See the sanitized examples in `config/`, including `timeweb-ai.env.example`, `mcp.env.example` and `servers.json.example`.
+
+Remote availability is configured in the private `servers.json` file. ICMP is diagnostic only; repeated TCP/HTTP health checks determine `UP`, `DEGRADED`, `DOWN` or `UNKNOWN`.
 
 ## Deployment
 
@@ -216,6 +220,7 @@ Production changes should reach `prod` through reviewed merges rather than direc
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Firewall model](docs/FIREWALL.md)
+- [MCP and Telegram AI](docs/MCP.md)
 - [Security policy](SECURITY.md)
 
 ## Project status

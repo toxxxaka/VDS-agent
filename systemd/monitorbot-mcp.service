@@ -1,25 +1,31 @@
 [Unit]
-Description=Telegram monitoring bot
-Wants=network-online.target
+Description=VDS-Agent bearer-protected Streamable HTTP MCP
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=monitorbot
 Group=monitorbot
 EnvironmentFile=/etc/monitoringbot-main/telegram.env
+EnvironmentFile=/etc/monitoringbot-main/mcp.env
 EnvironmentFile=-/etc/monitoringbot-main/timeweb-ai.env
-Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
-Environment=MONITORINGBOT_SSH_ALLOWLIST=/etc/monitoringbot/ssh-allowlist.json
 Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
 Environment=MONITORINGBOT_SERVERS_CONFIG=/etc/monitoringbot-main/servers.json
+Environment=MONITORINGBOT_MCP_PORT=8793
 WorkingDirectory=/opt/monitoringbot
-ExecStart=/usr/bin/python3 /opt/monitoringbot/v3.py
-Restart=always
-RestartSec=10
-StateDirectory=monitoringbot
+ExecStart=/usr/bin/python3 -m v4.mcp_http
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=384M
+CPUQuota=50%
 ReadWritePaths=/var/lib/monitoringbot
 
 [Install]

@@ -3,6 +3,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location("monitoring_v3", Path(__file__).with_name("v3.py"))
@@ -82,6 +83,41 @@ class SSHLoginMonitorTests(unittest.TestCase):
             self.assertEqual(received, ["reboot", "AbC_XyZ"])
         finally:
             bot.execute_power_action, bot.send = old_execute, old_send
+    def test_ai_command_uses_existing_authenticated_dispatch(self):
+        old_send = bot.send
+        messages = []
+        try:
+            bot.send = lambda message, **kwargs: messages.append((message, kwargs)) or True
+            with patch("v4.telegram_ai.ask") as ask:
+                ask.return_value = type("Reply", (), {"text": "safe AI report"})()
+                token = bot.CURRENT_USER_ID.set("TGID")
+                try:
+                    bot.process_authenticated_command("/ai Why is the server slow?")
+                finally:
+                    bot.CURRENT_USER_ID.reset(token)
+            ask.assert_called_once_with("TGID", "Why is the server slow?")
+            self.assertIn("safe AI report", messages[0][0])
+        finally:
+            bot.send = old_send
+
+
+class ServerAvailabilityTests(unittest.TestCase):
+    def test_tcp_fallback_confirms_a_live_host_when_icmp_is_filtered(self):
+        with patch.object(bot, "ping", return_value=False), patch.object(bot, "tcp_reachable", return_value=22):
+            result = bot.probe_server("203.0.113.42")
+        self.assertTrue(result["alive"])
+        self.assertEqual(result["method"], "TCP")
+        self.assertEqual(result["port"], 22)
+
+    def test_unconfirmed_is_not_reported_as_no_icmp(self):
+        with patch.object(bot, "ping", return_value=False), patch.object(bot, "tcp_reachable", return_value=None):
+            result = bot.probe_server("203.0.113.42")
+        self.assertFalse(result["alive"])
+        self.assertEqual(result["method"], "unconfirmed")
+
+    def test_configured_tcp_ports_are_validated(self):
+        with patch.dict(bot.os.environ, {"MONITORINGBOT_SERVER_TCP_PORTS": "22, 443, 0, bad, 443, 70000"}):
+            self.assertEqual(bot.server_tcp_ports(), (22, 443))
 
 
 if __name__ == "__main__":

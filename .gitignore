@@ -6,6 +6,8 @@ telegram.env
 auth.json
 health.json
 ssh-allowlist.json
+mcp.env
+servers.json
 pass
 credentials*
 secrets*

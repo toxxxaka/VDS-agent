@@ -23,7 +23,7 @@ class TaskSpec:
 TASKS: dict[str, TaskSpec] = {
     "status": TaskSpec("status", "System status", "Complete status summary", "Monitoring", 20),
     "daily": TaskSpec("daily", "Daily report", "Extended daily report", "Monitoring", 30),
-    "ping": TaskSpec("ping", "Server availability", "ICMP availability of configured servers", "Monitoring", 15),
+    "ping": TaskSpec("ping", "Server availability", "ICMP with a configured TCP fallback", "Monitoring", 15),
     "cpu": TaskSpec("cpu", "CPU", "CPU usage and temperature", "Resources", 10),
     "ram": TaskSpec("ram", "Memory", "RAM and swap", "Resources", 10),
     "disk": TaskSpec("disk", "Disk", "Disk capacity and SMART summary", "Resources", 10),

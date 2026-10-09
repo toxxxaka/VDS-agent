@@ -1,0 +1,4 @@
+# Install as /etc/sudoers.d/monitoringbot-admin after visudo -cf validation.
+# The helper validates exactly one fixed action; do not add wildcard arguments.
+monitorbot ALL=(root) NOPASSWD: /usr/local/libexec/monitoringbot-admin-helper restart_monitoringbot, /usr/local/libexec/monitoringbot-admin-helper restart_web, /usr/local/libexec/monitoringbot-admin-helper restart_health, /usr/local/libexec/monitoringbot-admin-helper reboot, /usr/local/libexec/monitoringbot-admin-helper poweroff
+monitorbot ALL=(root) NOPASSWD: /usr/local/libexec/monitoringbot-diagnostic-helper journal *

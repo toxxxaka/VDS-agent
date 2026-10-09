@@ -17,6 +17,7 @@ import tempfile
 import base64
 import hashlib
 import hmac
+from v4 import availability
 import struct
 from contextvars import ContextVar
 from pathlib import Path
@@ -65,6 +66,7 @@ SERVERS = {
     "Сервер FRA": "198.51.100.20"
 }
 SERVER_ALERTS_ENABLED = os.environ.get("MONITORINGBOT_SERVER_ALERTS", "0") == "1"
+DEFAULT_SERVER_TCP_PORTS = (22,)
 
 # ===========================================================
 # TEMPERATURE LIMITS
@@ -109,6 +111,7 @@ def telegram(method, payload=None, timeout=(5, 20)):
 BOT_COMMANDS = [
     {"command": "start", "description": "Start and authentication help"},
     {"command": "login", "description": "Sign in with a TOTP code"},
+    {"command": "ai", "description": "AI-assisted server diagnostics"},
     {"command": "status", "description": "Full server status"},
     {"command": "daily", "description": "Daily report"},
     {"command": "ping", "description": "Check server availability"},
@@ -140,13 +143,16 @@ def register_bot_commands():
     LOG.info("Telegram command menu registered: %d commands", len(BOT_COMMANDS))
     return True
 
-def send(text, chat_id=None):
-    response = telegram("sendMessage", {
+def send(text, chat_id=None, reply_markup=None):
+    payload = {
         "chat_id": chat_id or REPLY_CHAT_ID.get() or CHAT_ID,
         "text": text,
         "disable_web_page_preview": True,
         "parse_mode": "HTML",
-    })
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    response = telegram("sendMessage", payload)
     delivered = bool(response and response.get("ok"))
     LOG.info("Telegram message delivery: %s", delivered)
     return delivered
@@ -395,22 +401,63 @@ def run(cmd):
 # PING
 # ===========================================================
 
-def ping(host):
-
-    result = subprocess.run(
-        [
-            "ping",
-            "-c",
-            "1",
-            "-W",
-            "5",
-            host
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-
+def ping(host, timeout=2):
+    """Return whether an ICMP echo reply was received from *host*."""
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", str(timeout), host],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout + 1,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
     return result.returncode == 0
+
+
+def server_tcp_ports():
+    """Return explicitly configured TCP fallback ports for remote checks."""
+    raw = os.environ.get("MONITORINGBOT_SERVER_TCP_PORTS", "")
+    if not raw:
+        return DEFAULT_SERVER_TCP_PORTS
+    ports = []
+    for value in raw.split(","):
+        try:
+            port = int(value.strip())
+        except ValueError:
+            continue
+        if 1 <= port <= 65535 and port not in ports:
+            ports.append(port)
+    return tuple(ports) or DEFAULT_SERVER_TCP_PORTS
+
+
+def tcp_reachable(host, ports=None, timeout=2):
+    """Return a responding TCP port, or ``None`` when none can be reached.
+
+    A refused connection also proves that the target host answered at the network
+    layer, so it is treated as reachability. This avoids declaring a live VDS
+    unavailable solely because it filters ICMP.
+    """
+    for port in ports or server_tcp_ports():
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return port
+        except ConnectionRefusedError:
+            return port
+        except (socket.timeout, OSError):
+            continue
+    return None
+
+
+def probe_server(host):
+    """Confirm availability with ICMP first and TCP as a configured fallback."""
+    if ping(host):
+        return {"alive": True, "method": "ICMP", "port": None}
+    port = tcp_reachable(host)
+    if port is not None:
+        return {"alive": True, "method": "TCP", "port": port}
+    return {"alive": False, "method": "unconfirmed", "port": None}
 
 # PRIVILEGED POWER ACTIONS
 
@@ -709,19 +756,17 @@ def smart():
 # SERVER STATUS
 # ===========================================================
 
+def _availability_config():
+    try:
+        return availability.load_config(SERVERS)
+    except ValueError as error:
+        LOG.error("Invalid server availability configuration: %s", error)
+        return {"attempts": 1, "failure_threshold": 1, "recovery_threshold": 1, "servers": []}
+
+
 def servers():
-
-    data = {}
-
-    for name, ip in SERVERS.items():
-
-        data[name] = {
-
-            "ip": ip,
-            "alive": ping(ip)
-
-        }
-
+    """Current availability checks. A blocked ICMP echo never means DOWN by itself."""
+    data, _state = availability.check_all(_availability_config(), load_status())
     return data
 
 
@@ -785,10 +830,8 @@ def build_status():
     text.append("Servers")
 
     for name, info in servers().items():
-
-        icon = "🟢" if info["alive"] else "🔴"
-
-        text.append(f"{icon} {name}")
+        icon = {"UP": "🟢", "DEGRADED": "🟡", "DOWN": "🔴", "UNKNOWN": "⚪️"}[info["status"]]
+        text.append(f"{icon} {name}: {info["status"]}")
 
     text.append("")
     text.append(datetime.now().strftime("%d.%m.%Y %H:%M"))
@@ -830,40 +873,19 @@ def save_status(data):
 # ===========================================================
 
 def check_servers():
-
+    """Persist stable availability state and alert only real service outages/recovery."""
     previous = load_status()
-
-    current = {}
-
-    for name, ip in SERVERS.items():
-
-        alive = ping(ip)
-
-        current[name] = alive
-
-        was = previous.get(name)
-
-        if was is None:
-
-            continue
-
-        if SERVER_ALERTS_ENABLED and was and not alive:
-
-            send(
-                f"🚨 {name}\n\n"
-                f"{ip}\n\n"
-                f"не отвечает."
-            )
-
-        elif SERVER_ALERTS_ENABLED and not was and alive:
-
-            send(
-                f"✅ {name}\n\n"
-                f"{ip}\n\n"
-                f"снова доступен."
-            )
-
-    save_status(current)
+    current, state = availability.check_all(_availability_config(), previous)
+    prior = previous.get("servers", previous) if isinstance(previous, dict) else {}
+    for name, info in current.items():
+        was = prior.get(name, {})
+        was_status = was.get("status", "UNKNOWN") if isinstance(was, dict) else ("UP" if was else "UNKNOWN")
+        if SERVER_ALERTS_ENABLED and info["status"] == "DOWN" and was_status != "DOWN":
+            send(f"🚨 {name}\n\n{info['host']}\n\nВсе настроенные проверки сервисов не проходят.")
+        elif SERVER_ALERTS_ENABLED and was_status == "DOWN" and info["status"] == "UP":
+            send(f"✅ {name}\n\n{info['host']}\n\nСнова доступен.")
+    save_status(state)
+    return current
 
 
 # ===========================================================
@@ -976,6 +998,20 @@ def process_authenticated_command(text):
     cmd = raw_command.lower()
     LOG.info("Authenticated command started: %s", raw_command.split(maxsplit=1)[0])
 
+    if cmd.startswith("/ai action "):
+        action = raw_command.split(maxsplit=2)[2].strip()
+        from v4.telegram_ai import request_action
+        reply = request_action(str(CURRENT_USER_ID.get()), action)
+        markup = None
+        if reply.confirmation_id is not None:
+            markup = {"inline_keyboard": [[{"text": "Confirm action", "callback_data": f"ai-confirm:{reply.confirmation_id}"}, {"text": "Cancel", "callback_data": "ai-cancel"}]]}
+        send(reply.text, reply_markup=markup); return
+    if cmd.startswith("/ai "):
+        from v4.telegram_ai import ask
+        reply = ask(str(CURRENT_USER_ID.get()), raw_command.split(maxsplit=1)[1])
+        send("🤖 <b>AI диагностика</b>\n" + reply.text); return
+    if cmd == "/ai":
+        send("Формат: /ai Почему сервер тормозит?\nДля разрешённого действия: /ai action restart_web"); return
     if cmd == "/status":
         send(build_status()); return
     if cmd == "/help":
@@ -1020,9 +1056,12 @@ def process_authenticated_command(text):
         action,iid=cmd[1:].split(); (ack if action=='ack' else close)(int(iid),CURRENT_USER_ID.get()); send(f"✅ Incident #{iid}: {action}"); return
     if cmd == "/sessions": send(ssh_sessions_text()); return
     if cmd == "/ping":
-        rows = ["📡 <b>Проверка ICMP</b>"]
-        for name, info in servers().items(): rows.append(f"{'🟢' if info['alive'] else '⚪️'} {name}: {'есть ответ' if info['alive'] else 'нет ICMP-ответа'}")
-        rows.append("ℹ️ Нет ICMP-ответа не означает недоступность сервера.")
+        rows = ["📡 <b>Проверка доступности</b>"]
+        icons = {"UP": "🟢", "DEGRADED": "🟡", "DOWN": "🔴", "UNKNOWN": "⚪️"}
+        for name, info in servers().items():
+            checks = ", ".join(f"{item['kind'].upper()}{('/'+str(item['port'])) if item.get('port') else ''}: {'ok' if item['ok'] else 'fail'}" for item in info["checks"])
+            rows.append(f"{icons[info['status']]} {name}: <b>{info['status']}</b>\n{checks}")
+        rows.append("ℹ️ ICMP — диагностический сигнал. DOWN означает, что повторные TCP/HTTP проверки не подтвердили доступность.")
         send("\n".join(rows)); return
     if cmd == "/reboot": send("♻️ " + reboot()); return
     if cmd == "/shutdown": send("⛔ " + shutdown()); return
@@ -1092,6 +1131,25 @@ def poll(last_update):
     for update in data["result"]:
 
         last_update = update["update_id"]
+
+        callback = update.get("callback_query")
+        if callback:
+            sender = callback.get("from", {})
+            message = callback.get("message", {})
+            chat = message.get("chat", {})
+            data = str(callback.get("data", ""))
+            telegram("answerCallbackQuery", {"callback_query_id": callback.get("id", "")})
+            if chat.get("type") != "private" or chat.get("id") != sender.get("id") or not authenticated(str(sender.get("id", ""))):
+                continue
+            if data == "ai-cancel":
+                send("Действие отменено.", chat_id=str(chat["id"]))
+                continue
+            match = re.fullmatch(r"ai-confirm:(\d+)", data)
+            if match:
+                from v4.telegram_ai import confirm_action
+                reply = confirm_action(str(sender["id"]), int(match.group(1)))
+                send(reply.text, chat_id=str(chat["id"]))
+            continue
 
         message = update.get("message")
 
@@ -1165,10 +1223,8 @@ def build_daily_report():
     failed = []
 
     for name, info in srv.items():
-
-        if not info["alive"]:
-
-            failed.append(name)
+        if info["status"] in {"DOWN", "DEGRADED"}:
+            failed.append(f"{name} ({info['status']})")
 
     if not failed:
 

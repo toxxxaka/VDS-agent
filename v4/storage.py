@@ -1,6 +1,6 @@
-import json, sqlite3, time
+import json, os, sqlite3, time
 from pathlib import Path
-DB=Path('/var/lib/monitoringbot/monitoring.db')
+DB=Path(os.environ.get('MONITORINGBOT_DB', '/var/lib/monitoringbot/monitoring.db'))
 SCHEMA='''
 PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS incidents(id INTEGER PRIMARY KEY,type TEXT NOT NULL,severity TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('active','recovered','closed')),started_at REAL NOT NULL,last_seen_at REAL NOT NULL,recovered_at REAL,closed_at REAL,peak REAL,threshold REAL,ack_by TEXT,snapshot_id INTEGER);
