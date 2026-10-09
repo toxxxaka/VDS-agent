@@ -52,6 +52,9 @@ class AgentToolTests(unittest.TestCase):
         with self.assertRaises(agent_tools.ToolError):
             agent_tools.service_status({"units": ["ssh.service; whoami"]})
 
+    def test_accepts_allowed_systemd_unit_name(self):
+        self.assertEqual(agent_tools._unit("monitoringbot.service"), "monitoringbot.service")
+
     def test_admin_action_requires_second_owner_bound_confirmation(self):
         first = agent_tools.admin_action({"action": "restart_web"}, actor="telegram:42")
         self.assertTrue(first["confirmation_required"])

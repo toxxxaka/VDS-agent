@@ -27,7 +27,7 @@ from .storage import audit, connect, rows
 MAX_OUTPUT = 12_000
 MAX_LOG_LINES = 100
 PENDING_TTL = 90
-UNIT_RE = re.compile(r"[A-Za-z0-9@_.-]{1,120}\\.service")
+UNIT_RE = re.compile(r"[A-Za-z0-9@_.-]{1,120}\.service")
 LOG_UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "nginx.service", "ssh.service", "docker.service"}
 DIAGNOSTIC_HELPER = Path("/usr/local/libexec/monitoringbot-diagnostic-helper")
 HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}")
