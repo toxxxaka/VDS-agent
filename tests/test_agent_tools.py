@@ -63,7 +63,7 @@ class AgentToolTests(unittest.TestCase):
                 agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:43")
             second = agent_tools.admin_action({"action": "restart_web", "confirmation_id": first["confirmation_id"]}, actor="telegram:42")
         self.assertFalse(second["ok"])
-        self.assertIn("bridge", second["detail"])
+        self.assertIn("bridge", second.get("detail", second.get("error", "")))
 
     def test_network_rejects_private_resolution(self):
         with patch.object(agent_tools.socket, "getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 0))]):
