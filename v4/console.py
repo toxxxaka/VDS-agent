@@ -12,11 +12,12 @@ from .agent_tools import ToolError, execute
 
 HELP = """Allowed commands:
   help                         show this list
-  status | cpu | memory | disk | network
+  status | cpu | memory | disk | network | load | uptime
   processes [cpu|memory|io]    top five sampled processes
   sockets [port|name]          listening TCP/UDP sockets
   services                     core service states
   logs [unit]                  recent journal for an allowed unit
+  health                       VDS-Agent self-monitoring checks
   incidents [active|closed|all]
   metrics [1h|6h|24h|7d|30d]
 
@@ -30,7 +31,10 @@ COMMANDS = {
     "memory": ("diagnose_load", {"limit": 5}),
     "disk": ("diagnose_load", {"limit": 5}),
     "network": ("server_status", {}),
+    "load": ("diagnose_load", {"limit": 5}),
+    "uptime": ("server_status", {}),
     "services": ("service_status", {}),
+    "health": ("monitoring_health", {}),
 }
 
 

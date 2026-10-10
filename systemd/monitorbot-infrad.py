@@ -164,10 +164,17 @@ def expire(token: str) -> None:
             pass
 
 
+def _rollback_available() -> bool:
+    try:
+        return ACTIVE_META.is_file() and ACTIVE_PREVIOUS.is_file()
+    except OSError:
+        return False
+
+
 def state() -> dict[str, Any]:
     """Expose only VDS-Agent's managed table, never the host-wide firewall."""
     managed = _managed_table() or ""
-    return {"managed": managed, "rollback_available": ACTIVE_META.exists() and ACTIVE_PREVIOUS.exists()}
+    return {"managed": managed, "rollback_available": _rollback_available()}
 
 
 def handle(data: dict[str, Any]) -> dict[str, Any]:

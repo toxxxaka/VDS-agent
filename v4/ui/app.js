@@ -59,6 +59,13 @@ function tools(){const diagnostics=[['status','System status','Complete status s
 
 function consoleText(value){
   if(typeof value==='string')return value;
+  if(!value||typeof value!=='object')return String(value??'');
+  if(value.log!==undefined)return `${value.unit||'journal'} · last ${value.minutes||'—'} min\n\n${value.log||'No journal entries.'}`;
+  if(Array.isArray(value.processes))return value.processes.map(item=>`PID ${item.pid} | ${item.user} | CPU ${item.cpu_percent}% | RSS ${bytes(item.rss_bytes)} | ${item.cmd}`).join('\n')||'No visible processes.';
+  if(Array.isArray(value.sockets))return value.sockets.join('\n')||'No listening sockets.';
+  if(Array.isArray(value.services))return value.services.map(item=>`${item.unit}: ${item.active} (${item.enabled})`).join('\n');
+  if(value.cpu&&value.load_average)return `CPU ${value.cpu.percent}% | Load ${Object.values(value.load_average).join(' / ')}\nMemory available: ${bytes(value.memory?.available_bytes)}\n\n${(value.top_processes||[]).slice(0,5).map(item=>`PID ${item.pid} | ${item.user} | CPU ${item.cpu_percent}% | RSS ${bytes(item.rss_bytes)} | ${item.cmd}`).join('\n')}`;
+  if(Array.isArray(value.incidents))return value.incidents.map(item=>`#${item.id} | ${item.severity} | ${item.status} | ${item.type}`).join('\n')||'No incidents.';
   return JSON.stringify(value,null,2);
 }
 async function consolePage(){
