@@ -227,12 +227,16 @@ def service_logs(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     minutes = min(max(int(arguments.get("minutes", 60)), 1), 24 * 60)
     if unit not in LOG_UNITS:
         raise ToolError("journal access is limited to VDS-Agent and core service units")
-    # The web process is a member of systemd-journal/adm.  Read directly so
-    # NoNewPrivileges remains enabled and the browser cannot trigger sudo.
-    result = _run([
-        "/usr/bin/journalctl", "--no-pager", "--output=short-iso", "--unit", unit,
-        "--since", f"{minutes} minutes ago", "--lines", str(lines),
-    ], timeout=10)
+    direct = os.environ.get("MONITORINGBOT_JOURNAL_DIRECT") == "1"
+    if direct or not DIAGNOSTIC_HELPER.is_file():
+        # WebUI runs with adm and keeps NoNewPrivileges enabled.
+        result = _run([
+            "/usr/bin/journalctl", "--no-pager", "--output=short-iso", "--unit", unit,
+            "--since", f"{minutes} minutes ago", "--lines", str(lines),
+        ], timeout=10)
+    else:
+        # Telegram retains its existing narrow root-owned journal helper.
+        result = _run(["/usr/bin/sudo", "-n", str(DIAGNOSTIC_HELPER), "journal", unit, str(lines), str(minutes)], timeout=12)
     return {"unit": unit, "minutes": minutes, "available": result["ok"], "log": result.get("output", result.get("error", ""))}
 
 

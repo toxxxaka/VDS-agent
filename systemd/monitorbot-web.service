@@ -13,6 +13,7 @@ EnvironmentFile=-/etc/monitoringbot-main/timeweb-ai.env
 Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
 Environment=MONITORINGBOT_SERVERS_CONFIG=/etc/monitoringbot-main/servers.json
 Environment=MONITORINGBOT_WEB_PORT=8787
+Environment=MONITORINGBOT_JOURNAL_DIRECT=1
 WorkingDirectory=/opt/monitoringbot
 ExecStart=/usr/bin/python3 -m v4.webapp
 Restart=always
