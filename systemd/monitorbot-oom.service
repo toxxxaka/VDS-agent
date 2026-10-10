@@ -1,13 +1,34 @@
 [Unit]
 Description=Monitoringbot kernel OOM alerts
 After=systemd-journald.service network-online.target
+
 [Service]
 Type=simple
 User=root
+Group=root
 EnvironmentFile=/etc/monitoringbot-main/telegram.env
+Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
 ExecStart=/usr/bin/python3 /opt/monitoringbot/oom_monitor.py
 Restart=always
 RestartSec=5
-StateDirectory=monitorbot-oom
+StateDirectory=monitoringbot
+StateDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+MemoryMax=256M
+CPUQuota=25%
+ReadWritePaths=/var/lib/monitoringbot
+
 [Install]
 WantedBy=multi-user.target

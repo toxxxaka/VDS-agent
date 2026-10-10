@@ -20,7 +20,7 @@ The project is designed for private infrastructure management — not as a publi
 - Linux OOM killer detection
 - SSH login monitoring
 - Lightweight local metric history with 30-day retention
-- Interactive 1h, 6h, 24h and 7d historical charts
+- Interactive 1h, 6h, 24h, 7d and 30d historical charts
 - Incident diagnostic snapshots kept separately from metric history
 - Recovery notifications and alert cooldowns
 
@@ -64,6 +64,7 @@ The mobile-first HTTPS WebUI provides:
 - TLS inspection
 - Password generation
 - External HTTP, TCP, DNS and ping checks
+- Safe read-only Linux-style console with history, suggestions and fixed diagnostic commands
 
 The interface is designed for both desktop browsers and Telegram Mini Apps.
 
@@ -200,7 +201,7 @@ The recommended production layout separates source code, runtime state and secre
 /var/lib/monitoringbot/      persistent runtime state
 ```
 
-systemd unit examples are available under `systemd/`.
+systemd unit examples are available under `systemd/`. See [operations and release procedure](docs/OPERATIONS.md) before applying a reviewed release.
 
 ## Development workflow
 

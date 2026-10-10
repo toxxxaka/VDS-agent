@@ -1,6 +1,7 @@
 [Unit]
 Description=Monitoringbot constrained infrastructure bridge
 After=network-online.target
+
 [Service]
 Type=simple
 ExecStart=/usr/local/libexec/monitorbot-infrad
@@ -10,8 +11,21 @@ User=root
 Group=root
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=full
+PrivateDevices=yes
+ProtectSystem=strict
 ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+MemoryMax=256M
+CPUQuota=25%
+UMask=0077
 ReadWritePaths=/var/lib/monitoringbot /run/monitorbot
+
 [Install]
 WantedBy=multi-user.target

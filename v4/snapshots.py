@@ -60,4 +60,11 @@ def capture(kind):
 
 def record_metric():
     from .metrics import record
-    return record()
+    from .self_monitoring import collect
+    sample = record()
+    try:
+        collect()
+    except Exception:
+        # Telemetry remains available even if a non-critical self-check fails.
+        pass
+    return sample

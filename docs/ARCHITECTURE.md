@@ -62,7 +62,7 @@ Tools → Server events offers All, Open and Closed views. **Close all** is an e
 - **Dashboard**: compact current CPU, RAM, disk usage, network counters, active problems, primary service state and recent diagnostics.
 - **Metrics**: historical charts and live refresh.
 - **AI**: private Timeweb Agent chat via the authenticated backend proxy, with New chat, Stop generation, streaming states and local current-chat history.
-- **Tools**: Server events, Activity/audit, diagnostics, backups, client script library, network/security checks, firewall and power actions.
+- **Tools**: Server events, Activity/audit, diagnostics, a safe read-only console, backups, client script library, network/security checks, firewall and power actions.
 
 ## Operational health
 
@@ -76,3 +76,18 @@ Tools → Server events offers All, Open and Closed views. **Close all** is an e
 Telegram `/ai` builds a bounded diagnostic plan from the request, runs these local tools, then sends compact evidence to the already configured private Timeweb Agent for interpretation. Context lives only in process memory for 30 minutes. Controlled actions use a database-backed, caller-bound 90-second confirmation.
 
 Availability state is implemented in `v4/availability.py`. The private server configuration declares TCP ports and optional HTTP endpoints. ICMP is reported as a diagnostic signal and cannot alone mark a server DOWN.
+
+## Safe console and runtime safeguards
+
+The Tools console is intentionally a terminal-shaped user interface, not a remote
+shell. It accepts a short fixed vocabulary such as `processes cpu`, `sockets
+name`, `services`, `logs nginx.service` and `metrics 24h`. The parser rejects
+shell operators and paths, maps commands to `agent_tools.execute()`, enforces
+output/time bounds, audits each request and returns redacted output. The same
+backend is used by Telegram AI and MCP.
+
+Runtime SQLite files are kept owner-only (`0600`) and their directory is private
+(`0750`) when opened by the application. Unit templates set `UMask=0077`; the
+health, OOM and infrastructure templates also use `NoNewPrivileges`, private
+temporary/devices and a strict read-only system view with only their runtime
+paths writable.

@@ -75,6 +75,11 @@ def build_mcp():
         return _call("process_inspect", {"sort": sort, "limit": limit, "pid": pid})
 
     @mcp.tool()
+    def socket_inspect(sort: str = "port") -> dict:
+        """List bounded local listening TCP/UDP sockets sorted by port or process name."""
+        return _call("socket_inspect", {"sort": sort})
+
+    @mcp.tool()
     def service_status(units: list[str] | None = None) -> dict:
         """Read status of explicitly named systemd service units."""
         return _call("service_status", {"units": units} if units is not None else {})

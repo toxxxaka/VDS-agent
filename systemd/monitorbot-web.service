@@ -15,6 +15,7 @@ Environment=MONITORINGBOT_WEB_PORT=8787
 WorkingDirectory=/opt/monitoringbot
 ExecStart=/usr/bin/python3 -m v4.webapp
 Restart=always
+UMask=0077
 RestartSec=5
 NoNewPrivileges=yes
 PrivateTmp=yes

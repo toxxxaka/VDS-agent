@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Security and reliability
+- Added a read-only, allow-listed WebUI console shared with Telegram AI and MCP; it rejects shell syntax and audits every request.
+- Hardened external SSL and availability targets against private-address resolution.
+- Made runtime SQLite state private on application access and hardened the health, OOM and infrastructure unit templates.
+- Reworked managed nftables rollback to restore the prior `table inet monitoringbot` snapshot instead of merely deleting the current table.
+- Added cached self-monitoring so ordinary UI reads do not repeatedly run service and database checks.
+
+### Telegram AI
+- Added focused `/ai` subcommands, compact evidence-first answers, process RSS/uptime fields, bounded atop evidence, socket inspection, output chunking and contextual action buttons.
+- Removed duplicated AI headings and raw provider Markdown from Telegram responses.
+
+
 - Added a shared bounded diagnostics backend for Streamable HTTP MCP and Telegram `/ai`.
 - Added bearer-protected MCP transport, deployment templates and dedicated documentation.
 - Added Telegram AI multi-step diagnostics using the existing private Timeweb Agent, with short-lived caller-bound action confirmation.

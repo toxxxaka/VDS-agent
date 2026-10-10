@@ -12,6 +12,7 @@ Environment=MONITORINGBOT_MCP_PORT=8793
 WorkingDirectory=/opt/monitoringbot
 ExecStart=/opt/monitoringbot/venv/bin/python -m v4.mcp_http
 Restart=on-failure
+UMask=0077
 RestartSec=5
 NoNewPrivileges=yes
 PrivateTmp=yes

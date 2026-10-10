@@ -143,18 +143,32 @@ def register_bot_commands():
     LOG.info("Telegram command menu registered: %d commands", len(BOT_COMMANDS))
     return True
 
+def _telegram_chunks(text, limit=3900):
+    value = str(text)
+    while len(value) > limit:
+        split_at = value.rfind("\n", 0, limit)
+        if split_at < 200:
+            split_at = limit
+        yield value[:split_at]
+        value = value[split_at:].lstrip("\n")
+    yield value
+
+
 def send(text, chat_id=None, reply_markup=None):
-    payload = {
-        "chat_id": chat_id or REPLY_CHAT_ID.get() or CHAT_ID,
-        "text": text,
-        "disable_web_page_preview": True,
-        "parse_mode": "HTML",
-    }
-    if reply_markup is not None:
-        payload["reply_markup"] = reply_markup
-    response = telegram("sendMessage", payload)
-    delivered = bool(response and response.get("ok"))
-    LOG.info("Telegram message delivery: %s", delivered)
+    chunks = list(_telegram_chunks(text))
+    delivered = True
+    for index, chunk in enumerate(chunks):
+        payload = {
+            "chat_id": chat_id or REPLY_CHAT_ID.get() or CHAT_ID,
+            "text": chunk,
+            "disable_web_page_preview": True,
+            "parse_mode": "HTML",
+        }
+        if reply_markup is not None and index == len(chunks) - 1:
+            payload["reply_markup"] = reply_markup
+        response = telegram("sendMessage", payload)
+        delivered = bool(response and response.get("ok")) and delivered
+    LOG.info("Telegram message delivery: %s chunks=%d", delivered, len(chunks))
     return delivered
 
 
@@ -893,26 +907,31 @@ def check_servers():
 # ===========================================================
 
 def help_text():
-    return """📡 Мониторинг сервера
+    return """<b>📡 VDS Agent</b>
 
-📊 Состояние
-/status — полный статус
-/daily — ежедневный отчёт
-/ping — доступность серверов
+<b>Состояние</b>
+<code>/status</code> — полный статус
+<code>/daily</code> — ежедневный отчёт
+<code>/ping</code> — доступность серверов
 
-🖥 Ресурсы
-/cpu · /ram · /disk · /load · /uptime
+<b>Ресурсы</b>
+<code>/cpu</code> · <code>/ram</code> · <code>/disk</code> · <code>/load</code> · <code>/uptime</code>
 
-🔐 Безопасность
-/sessions — активные SSH-сессии
-/sshlogins — недавние внешние SSH-входы
-/killssh PID — завершить SSH-сессию
-/logout — завершить авторизацию
+<b>AI-диагностика</b>
+<code>/ai help</code> — все AI-команды
+<code>/ai processes</code> — процессы и потребление
+<code>/ai cpu</code> · <code>/ai memory</code> · <code>/ai disk</code> · <code>/ai network</code>
+<code>/ai services</code> · <code>/ai logs</code> · <code>/ai incidents</code> · <code>/ai explain</code>
+<i>Пример: /ai Почему сервер тормозит? Проверь процессы и диск.</i>
 
-⚙ Управление
-/reboot · /shutdown — с подтверждением
+<b>Безопасность</b>
+<code>/sessions</code> — активные SSH-сессии
+<code>/sshlogins</code> — внешние успешные SSH-входы
+<code>/killssh PID</code> — завершить сессию с подтверждением
+<code>/logout</code> — завершить авторизацию
 
-/help — это меню"""
+<b>Управление</b>
+<code>/reboot</code> · <code>/shutdown</code> — только с подтверждением"""
 
 
 SSH_SESSION_RE = re.compile(r"^sshd:\s+(?P<user>[^@\s]+)@(?P<tty>\S+)$")
@@ -1009,9 +1028,12 @@ def process_authenticated_command(text):
     if cmd.startswith("/ai "):
         from v4.telegram_ai import ask
         reply = ask(str(CURRENT_USER_ID.get()), raw_command.split(maxsplit=1)[1])
-        send("🤖 <b>AI диагностика</b>\n" + reply.text); return
+        buttons = [{"text": {"processes": "Процессы", "logs": "Логи", "explain": "Подробнее"}[action], "callback_data": f"ai-query:{action}"} for action in getattr(reply, "actions", ())]
+        markup = {"inline_keyboard": [buttons]} if buttons else None
+        send(reply.text, reply_markup=markup); return
     if cmd == "/ai":
-        send("Формат: /ai Почему сервер тормозит?\nДля разрешённого действия: /ai action restart_web"); return
+        from v4.telegram_ai import AI_HELP
+        send(AI_HELP); return
     if cmd == "/status":
         send(build_status()); return
     if cmd == "/help":
@@ -1143,6 +1165,13 @@ def poll(last_update):
                 continue
             if data == "ai-cancel":
                 send("Действие отменено.", chat_id=str(chat["id"]))
+                continue
+            query_match = re.fullmatch(r"ai-query:(processes|logs|explain)", data)
+            if query_match:
+                from v4.telegram_ai import ask
+                reply = ask(str(sender["id"]), query_match.group(1))
+                buttons = [{"text": {"processes": "Процессы", "logs": "Логи", "explain": "Подробнее"}[action], "callback_data": f"ai-query:{action}"} for action in getattr(reply, "actions", ())]
+                send(reply.text, chat_id=str(chat["id"]), reply_markup={"inline_keyboard": [buttons]} if buttons else None)
                 continue
             match = re.fullmatch(r"ai-confirm:(\d+)", data)
             if match:

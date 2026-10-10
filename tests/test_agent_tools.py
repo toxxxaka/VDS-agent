@@ -114,3 +114,30 @@ class SelfMonitoringTests(unittest.TestCase):
             self.assertTrue(report["checks"]["database"])
             self.assertTrue(report["checks"]["backups"])
             self.assertTrue(report["healthy"])
+
+class ConsoleTests(unittest.TestCase):
+    def test_help_never_invokes_tool(self):
+        from v4 import console
+        result = console.run("help", "web:42")
+        self.assertTrue(result["read_only"])
+        self.assertIn("processes", result["text"])
+
+    def test_console_rejects_shell_syntax(self):
+        from v4 import console
+        with self.assertRaises(agent_tools.ToolError):
+            console.parse("processes; id")
+
+    def test_console_maps_processes_to_allowlisted_tool(self):
+        from v4 import console
+        with patch.object(console, "execute", return_value={"processes": []}) as execute:
+            result = console.run("processes memory", "web:42")
+        self.assertEqual(result["tool"], "process_inspect")
+        execute.assert_called_once_with("process_inspect", {"sort": "memory", "limit": 5}, actor="web:42")
+
+
+class ExternalToolsTests(unittest.TestCase):
+    def test_rejects_private_hostname_resolution(self):
+        from v4 import external_tools
+        with patch.object(external_tools.socket, "getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 443))]):
+            with self.assertRaises(ValueError):
+                external_tools._public_target("localhost")

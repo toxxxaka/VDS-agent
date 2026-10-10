@@ -16,6 +16,7 @@ Environment=MONITORINGBOT_SERVERS_CONFIG=/etc/monitoringbot-main/servers.json
 WorkingDirectory=/opt/monitoringbot
 ExecStart=/usr/bin/python3 /opt/monitoringbot/v3.py
 Restart=always
+UMask=0077
 RestartSec=10
 StateDirectory=monitoringbot
 PrivateTmp=yes

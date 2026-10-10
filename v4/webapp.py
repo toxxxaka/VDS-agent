@@ -23,6 +23,7 @@ from . import firewall
 from . import external_tools
 from . import ai
 from . import self_monitoring
+from . import console
 from .tasks import TASKS, get_run, list_runs, start_run
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -422,6 +423,16 @@ class Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 audit(telegram_user, "ai_chat", "timeweb-agent", "failed")
+            return
+        if self.path == "/api/console":
+            data = self.body(limit=1024) or {}
+            try:
+                result = console.run(data.get("command", ""), actor=f"web:{telegram_user}")
+                audit(telegram_user, "web_console", result["tool"], "ok", {"read_only": True})
+                self.reply(200, result)
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                audit(telegram_user, "web_console", "rejected", "denied", {"reason": type(exc).__name__})
+                self.reply(400, {"error": str(exc)})
             return
         if self.path == "/api/tools/password":
             self.reply(200,{"password":external_tools.password()}); return

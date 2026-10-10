@@ -28,7 +28,7 @@ MAX_OUTPUT = 12_000
 MAX_LOG_LINES = 100
 PENDING_TTL = 90
 UNIT_RE = re.compile(r"[A-Za-z0-9@_.-]{1,120}\.service")
-LOG_UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "nginx.service", "ssh.service", "docker.service"}
+LOG_UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "monitorbot-infrad.service", "monitorbot-backupd.service", "nginx.service", "ssh.service", "docker.service"}
 DIAGNOSTIC_HELPER = Path("/usr/local/libexec/monitoringbot-diagnostic-helper")
 HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}")
 SECRET_RE = re.compile(r"(?i)(?:authorization|bearer|token|password|secret|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+")
@@ -91,42 +91,87 @@ def server_status(_: dict[str, Any] | None = None) -> dict[str, Any]:
     return overview()
 
 
+def _process_items(requested_pid: int | None = None, sample_seconds: float = 0.5) -> list[dict[str, Any]]:
+    """Take one short real CPU interval and return bounded process evidence."""
+    try:
+        processes = [psutil.Process(requested_pid)] if requested_pid else list(psutil.process_iter())
+    except psutil.Error:
+        return []
+    for process in processes:
+        try:
+            process.cpu_percent(interval=None)
+        except (psutil.Error, OSError):
+            pass
+    time.sleep(max(0.1, min(sample_seconds, 1.0)))
+    now = time.time()
+    items = []
+    for process in processes:
+        try:
+            with process.oneshot():
+                memory = process.memory_info()
+                io = process.io_counters() if hasattr(process, "io_counters") else None
+                command = " ".join(process.cmdline()) or process.name()
+                items.append({
+                    "pid": process.pid,
+                    "name": process.name(),
+                    "user": process.username(),
+                    "status": process.status(),
+                    "cpu_percent": round(process.cpu_percent(interval=None), 1),
+                    "memory_percent": round(process.memory_percent(), 2),
+                    "rss_bytes": memory.rss,
+                    "rss_mib": round(memory.rss / (1024 * 1024), 1),
+                    "cmd": _redact(command)[:240],
+                    "elapsed_seconds": max(0, int(now - process.create_time())),
+                    "threads": process.num_threads(),
+                    "io_read_bytes": getattr(io, "read_bytes", None),
+                    "io_write_bytes": getattr(io, "write_bytes", None),
+                })
+        except (psutil.Error, OSError):
+            continue
+    return items
+
+
+def _atop_evidence() -> dict[str, Any]:
+    """Expose only a bounded recent atop excerpt; absence is an explicit limitation."""
+    directory = Path("/var/log/atop")
+    try:
+        files = sorted((item for item in directory.glob("atop_*") if item.is_file()), key=lambda item: item.stat().st_mtime, reverse=True)
+    except OSError:
+        files = []
+    if not files:
+        return {"available": False, "reason": "no atop archive available"}
+    archive = files[0]
+    result = _run(["/usr/bin/atop", "-r", str(archive), "-1"], timeout=8, limit=6000)
+    return {"available": result["ok"], "archive": archive.name, "excerpt": result.get("output", result.get("error", ""))[-5000:]}
+
+
 def diagnose_load(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Collect compact CPU, RAM, I/O and top process evidence."""
-    limit = min(max(int((arguments or {}).get("limit", 10)), 1), 25)
+    """Collect evidence for CPU/RAM/I/O pressure, not cumulative counters alone."""
+    limit = min(max(int((arguments or {}).get("limit", 5)), 1), 25)
+    cpu_times = psutil.cpu_times_percent(interval=0.5)
     memory = psutil.virtual_memory()
     swap = psutil.swap_memory()
     io = psutil.disk_io_counters()
-    processes = []
-    for process in psutil.process_iter(["pid", "name", "username", "cpu_percent", "memory_percent", "status"]):
-        try:
-            info = process.info
-            processes.append({
-                "pid": info["pid"], "name": info.get("name") or "?", "user": info.get("username") or "?",
-                "cpu_percent": round(float(info.get("cpu_percent") or 0), 1),
-                "memory_percent": round(float(info.get("memory_percent") or 0), 1),
-                "status": info.get("status") or "?",
-            })
-        except (psutil.Error, OSError):
-            continue
-    processes.sort(key=lambda item: (item["cpu_percent"], item["memory_percent"]), reverse=True)
+    processes = _process_items(sample_seconds=0.5)
+    processes.sort(key=lambda item: (item["cpu_percent"], item["rss_bytes"]), reverse=True)
     return {
+        "measurement_window_seconds": 1.0,
         "load_average": dict(zip(("1m", "5m", "15m"), (round(value, 2) for value in os.getloadavg()))),
-        "cpu_percent": round(psutil.cpu_percent(interval=1.0), 1),
-        "cpu_count": psutil.cpu_count() or 1,
-        "memory": {"used": memory.used, "available": memory.available, "percent": memory.percent, "swap_percent": swap.percent},
-        "disk_io": {"read_bytes": io.read_bytes if io else 0, "write_bytes": io.write_bytes if io else 0},
+        "cpu": {"percent": round(psutil.cpu_percent(interval=None), 1), "cores": psutil.cpu_count() or 1, "user": round(getattr(cpu_times, "user", 0.0), 1), "system": round(getattr(cpu_times, "system", 0.0), 1), "iowait": round(getattr(cpu_times, "iowait", 0.0), 1), "steal": round(getattr(cpu_times, "steal", 0.0), 1)},
+        "memory": {"used_bytes": memory.used, "available_bytes": memory.available, "percent": memory.percent, "swap_percent": swap.percent},
+        "disk_io_cumulative_bytes": {"read": io.read_bytes if io else 0, "write": io.write_bytes if io else 0},
         "top_processes": processes[:limit],
+        "atop": _atop_evidence(),
     }
 
 
 def process_inspect(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Return selected process metadata, sorted by CPU or memory."""
+    """Return top processes with sampled CPU, RSS, cmd and elapsed time."""
     arguments = arguments or {}
-    limit = min(max(int(arguments.get("limit", 15)), 1), 50)
+    limit = min(max(int(arguments.get("limit", 5)), 1), 50)
     sort = arguments.get("sort", "cpu")
-    if sort not in {"cpu", "memory"}:
-        raise ToolError("sort must be cpu or memory")
+    if sort not in {"cpu", "memory", "io"}:
+        raise ToolError("sort must be cpu, memory or io")
     requested_pid = arguments.get("pid")
     if requested_pid is not None:
         try:
@@ -135,22 +180,26 @@ def process_inspect(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
             raise ToolError("invalid process id") from error
         if requested_pid < 1:
             raise ToolError("invalid process id")
-    items = []
-    iterator = [psutil.Process(requested_pid)] if requested_pid else psutil.process_iter()
-    for process in iterator:
-        try:
-            with process.oneshot():
-                items.append({
-                    "pid": process.pid, "name": process.name(), "user": process.username(),
-                    "status": process.status(), "cpu_percent": round(process.cpu_percent(interval=None), 1),
-                    "memory_percent": round(process.memory_percent(), 1), "threads": process.num_threads(),
-                    "created_at": process.create_time(),
-                })
-        except (psutil.Error, OSError):
-            continue
-    field = "cpu_percent" if sort == "cpu" else "memory_percent"
-    items.sort(key=lambda item: item[field], reverse=True)
-    return {"sort": sort, "processes": items[:limit]}
+    items = _process_items(requested_pid)
+    fields = {
+        "cpu": lambda item: (item["cpu_percent"], item["rss_bytes"]),
+        "memory": lambda item: (item["rss_bytes"], item["cpu_percent"]),
+        "io": lambda item: ((item["io_read_bytes"] or 0) + (item["io_write_bytes"] or 0), item["cpu_percent"]),
+    }
+    items.sort(key=fields[sort], reverse=True)
+    return {"sort": sort, "measurement_window_seconds": 0.5, "processes": items[:limit]}
+
+
+def socket_inspect(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """List local listening sockets from a fixed ss invocation."""
+    arguments = arguments or {}
+    sort = arguments.get("sort", "port")
+    if sort not in {"port", "name"}:
+        raise ToolError("sort must be port or name")
+    result = _run(["/usr/bin/ss", "-H", "-l", "-t", "-u", "-p", "-n"], timeout=6, limit=10000)
+    lines = [line for line in result.get("output", "").splitlines() if line.strip()]
+    lines.sort(key=str.lower if sort == "name" else lambda line: int(re.search(r":(\d+)(?:\s|$)", line).group(1)) if re.search(r":(\d+)(?:\s|$)", line) else 0)
+    return {"available": result["ok"], "sort": sort, "sockets": lines[:100], "detail": "" if result["ok"] else result.get("error", "")}
 
 
 def service_status(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -229,8 +278,9 @@ def network_diagnostics(arguments: dict[str, Any] | None = None) -> dict[str, An
     addresses = _public_addresses(host)
     tcp = False
     error = None
+    # Connect to a validated address, not a second DNS lookup of untrusted input.
     try:
-        with socket.create_connection((host, port), timeout=4):
+        with socket.create_connection((addresses[0], port), timeout=4):
             tcp = True
     except OSError as exc:
         error = type(exc).__name__
@@ -318,6 +368,7 @@ TOOLS = {
     "server_status": server_status,
     "diagnose_load": diagnose_load,
     "process_inspect": process_inspect,
+    "socket_inspect": socket_inspect,
     "service_status": service_status,
     "service_logs": service_logs,
     "metrics_query": metrics_query,
