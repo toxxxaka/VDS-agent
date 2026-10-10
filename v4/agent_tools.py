@@ -397,3 +397,124 @@ def execute(name: str, arguments: dict[str, Any] | None = None, actor: str = "mc
         raise ToolError(f"{name} is currently unavailable") from error
     audit(actor, "agent_tool", name, "ok")
     return value
+
+# Safe-console diagnostic groups. Every branch below has fixed arguments; no
+# browser-provided value is ever made part of a shell command or a file path.
+def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    arguments = arguments or {}
+    topic = arguments.get("topic")
+    option = arguments.get("option", "")
+    allowed = {
+        "pressure": {""}, "oom": {"history"},
+        "network": {"summary", "top", "interfaces", "errors", "connections", "listen", "syn", "dns", "routes"},
+        "services": {"failed", "restart-count"}, "service": LOG_UNITS,
+        "logs": {"errors", "kernel", "ssh"}, "timers": {""}, "boot": {"analyze"},
+        "security": {"overview", "ssh", "fail2ban", "firewall", "ports", "updates"},
+        "disk": {"usage", "inodes", "health", "growth"}, "backup": {"status", "verify"},
+        "monitoring": {"health", "collectors", "alerts"}, "incidents": {"recent"},
+        "diagnose": {"cpu", "memory", "io", "server", "nginx", "docker"},
+        "compare": {"cpu"}, "changes": {"24h"}, "report": {"24h"},
+    }
+    if topic not in allowed or option not in allowed[topic]:
+        raise ToolError("unsupported console diagnostic")
+
+    if topic == "pressure":
+        values: dict[str, Any] = {}
+        for name in ("cpu", "memory", "io"):
+            try:
+                line = Path(f"/proc/pressure/{name}").read_text().splitlines()[0]
+                values[name] = dict(re.findall(r"(avg10|avg60|avg300|total)=([0-9.]+)", line))
+            except OSError:
+                values[name] = {"available": False}
+        return {"pressure": values}
+    if topic == "oom":
+        return {"oom": _journal_fixed(["-k", "--grep", "Out of memory|Killed process", "--since", "30 days ago", "--lines", "80"])}
+    if topic == "network":
+        io = psutil.net_io_counters(pernic=True)
+        if option == "summary":
+            return {"interfaces": {name: {"up": bool(getattr(psutil.net_if_stats().get(name), "isup", False)), "rx_bytes": item.bytes_recv, "tx_bytes": item.bytes_sent, "errors": item.errin + item.errout, "drops": item.dropin + item.dropout} for name, item in io.items()}}
+        if option == "interfaces":
+            stats, addresses = psutil.net_if_stats(), psutil.net_if_addrs()
+            return {"interfaces": {name: {"up": item.isup, "speed_mbps": item.speed, "addresses": [row.address for row in addresses.get(name, []) if row.family in {socket.AF_INET, socket.AF_INET6}]} for name, item in stats.items()}}
+        if option == "errors":
+            return {"interfaces": {name: {"errors_in": item.errin, "errors_out": item.errout, "drops_in": item.dropin, "drops_out": item.dropout} for name, item in io.items()}}
+        if option in {"connections", "top", "syn"}:
+            try:
+                conns = psutil.net_connections(kind="tcp")
+            except psutil.Error:
+                conns = []
+            if option == "syn":
+                return {"syn_recv": sum(1 for item in conns if item.status == "SYN_RECV")}
+            if option == "connections":
+                states: dict[str, int] = {}
+                for item in conns: states[item.status or "UNKNOWN"] = states.get(item.status or "UNKNOWN", 0) + 1
+                return {"tcp_states": states, "total": len(conns)}
+            peers: dict[str, int] = {}
+            for item in conns:
+                if item.raddr: peers[str(item.raddr.ip)] = peers.get(str(item.raddr.ip), 0) + 1
+            return {"connections_by_peer": sorted(({"peer": key, "connections": value} for key, value in peers.items()), key=lambda item: item["connections"], reverse=True)[:20]}
+        if option == "listen": return socket_inspect({"sort": "port"})
+        if option == "dns":
+            try: lines = [line.strip() for line in Path("/etc/resolv.conf").read_text().splitlines() if line.strip() and not line.lstrip().startswith("#")]
+            except OSError: lines = []
+            return {"resolver": lines[:20]}
+        if option == "routes": return {"routes": _run(["/usr/sbin/ip", "route", "show"], limit=6000)}
+    if topic == "services":
+        if option == "failed": return {"failed": _run(["/usr/bin/systemctl", "--failed", "--no-legend", "--plain"], limit=6000)}
+        rows_out = []
+        for unit in sorted(LOG_UNITS):
+            rows_out.append({"unit": unit, "restart_count": _run(["/usr/bin/systemctl", "show", unit, "--property", "NRestarts", "--value"], limit=100).get("output", "unknown").strip()})
+        return {"restart_counts": rows_out}
+    if topic == "service": return {"service": option, "status": _run(["/usr/bin/systemctl", "status", option, "--no-pager", "--lines", "20"], timeout=8, limit=7000)}
+    if topic == "logs":
+        args = {"errors": ["--priority", "err", "--since", "1 hour ago", "--lines", "80"], "kernel": ["-k", "--priority", "warning", "--since", "2 hours ago", "--lines", "80"], "ssh": ["--unit", "ssh.service", "--since", "24 hours ago", "--lines", "80"]}[option]
+        return {"journal": _journal_fixed(args)}
+    if topic == "timers": return {"timers": _run(["/usr/bin/systemctl", "list-timers", "--all", "--no-pager"], limit=8000)}
+    if topic == "boot": return {"boot": _run(["/usr/bin/systemd-analyze", "blame"], timeout=12, limit=8000)}
+    if topic == "security":
+        if option == "overview": return {"ports": socket_inspect({"sort": "port"}), "failed_units": _run(["/usr/bin/systemctl", "--failed", "--no-legend"], limit=3000)}
+        if option == "ssh": return {"ssh": _journal_fixed(["--unit", "ssh.service", "--since", "24 hours ago", "--lines", "100"])}
+        if option == "fail2ban": return {"fail2ban": _run(["/usr/bin/fail2ban-client", "status"], limit=4000)}
+        if option == "firewall":
+            try:
+                from . import firewall
+                return {"firewall": firewall.state()}
+            except Exception as error: return {"available": False, "error": type(error).__name__}
+        if option == "ports": return socket_inspect({"sort": "port"})
+        if option == "updates": return {"updates": _run(["/usr/bin/apt", "list", "--upgradable"], timeout=12, limit=5000)}
+    if topic == "disk":
+        if option == "usage": return {"filesystems": [{"mount": part.mountpoint, "used": psutil.disk_usage(part.mountpoint).used, "total": psutil.disk_usage(part.mountpoint).total, "percent": psutil.disk_usage(part.mountpoint).percent} for part in psutil.disk_partitions(all=False)]}
+        if option == "inodes":
+            return {"inodes": [{"mount": part.mountpoint, "used": max(0, os.statvfs(part.mountpoint).f_files - os.statvfs(part.mountpoint).f_ffree), "total": os.statvfs(part.mountpoint).f_files} for part in psutil.disk_partitions(all=False)]}
+        if option == "health": return {"health": _run(["/usr/sbin/smartctl", "--scan-open"], timeout=10, limit=4000)}
+        if option == "growth": return {"metrics": metric_query("30d")}
+    if topic == "backup":
+        report = self_monitoring_report()
+        return {"backup": report.get("backups", {}), "checks": {"backups": report.get("checks", {}).get("backups")}}
+    if topic == "monitoring":
+        report = self_monitoring_report()
+        if option == "health": return report
+        if option == "collectors": return {"metrics": report.get("metrics", {}), "services": [item for item in report.get("services", []) if "monitor" in item.get("unit", "")]}
+        return {"active_incidents": incidents_query({"status": "active"}), "health": report.get("checks", {})}
+    if topic == "incidents": return incidents_query({"status": "all"})
+    if topic == "diagnose":
+        if option in {"cpu", "memory", "io", "server"}: return {"diagnosis": diagnose_load({"limit": 5}), "status": server_status({})}
+        if option == "nginx": return {"service": service_status({"units": ["nginx.service"]}), "logs": service_logs({"unit": "nginx.service", "lines": 30, "minutes": 120}), "connections": console_diagnostic({"topic": "network", "option": "connections"})}
+        if option == "docker": return {"service": service_status({"units": ["docker.service"]}), "status": _run(["/usr/bin/docker", "ps", "--format", "{{.Names}}\t{{.Status}}"], timeout=8, limit=6000)}
+    if topic == "compare":
+        first, second = metric_query("1h"), metric_query("24h")
+        def average(rows: list[dict[str, Any]]) -> float | None:
+            values = [float(row["cpu"]) for row in rows if isinstance(row.get("cpu"), (int, float))]
+            return round(sum(values) / len(values), 2) if values else None
+        return {"cpu": {"1h_average": average(first), "24h_average": average(second)}}
+    if topic == "changes": return {"audit": rows("SELECT time,user_id,action,target,result FROM audit_log WHERE time>=? ORDER BY time DESC LIMIT 100", (time.time() - 86400,))}
+    if topic == "report": return {"health": self_monitoring_report(), "incidents": incidents_query({"status": "all"})}
+    raise ToolError("unsupported console diagnostic")
+
+
+def _journal_fixed(arguments: list[str]) -> dict[str, Any]:
+    if os.environ.get("MONITORINGBOT_JOURNAL_DIRECT") != "1":
+        return {"available": False, "error": "system journal is available in the WebUI console only"}
+    return _run(["/usr/bin/journalctl", "--no-pager", "--output=short-iso", *arguments], timeout=12, limit=10000)
+
+TOOLS["console_diagnostic"] = console_diagnostic

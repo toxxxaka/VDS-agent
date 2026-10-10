@@ -157,6 +157,21 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(result["tool"], "process_inspect")
         execute.assert_called_once_with("process_inspect", {"sort": "memory", "limit": 5}, actor="web:42")
 
+    def test_console_expands_read_only_diagnostics(self):
+        from v4 import console
+        self.assertEqual(console.parse("pressure"), ("console_diagnostic", {"topic": "pressure", "option": ""}))
+        self.assertEqual(console.parse("services failed"), ("console_diagnostic", {"topic": "services", "option": "failed"}))
+        self.assertEqual(console.parse("network syn"), ("console_diagnostic", {"topic": "network", "option": "syn"}))
+        with self.assertRaisesRegex(agent_tools.ToolError, "network <summary"):
+            console.parse("network invalid")
+
+    def test_console_missing_argument_has_usage(self):
+        from v4 import console
+        with self.assertRaisesRegex(agent_tools.ToolError, "diagnose <cpu"):
+            console.parse("diagnose")
+        with self.assertRaisesRegex(agent_tools.ToolError, "process <PID>"):
+            console.parse("process")
+
 
 class ExternalToolsTests(unittest.TestCase):
     def test_rejects_private_hostname_resolution(self):
