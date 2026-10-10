@@ -11,7 +11,7 @@ Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
 ExecStart=/usr/bin/python3 /opt/monitoringbot/oom_monitor.py
 Restart=always
 RestartSec=5
-StateDirectory=monitoringbot
+StateDirectory=monitorbot-oom
 StateDirectoryMode=0750
 UMask=0077
 NoNewPrivileges=yes
@@ -28,7 +28,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 MemoryMax=256M
 CPUQuota=25%
-ReadWritePaths=/var/lib/monitoringbot
+ReadWritePaths=/var/lib/monitoringbot /var/lib/monitorbot-oom
 
 [Install]
 WantedBy=multi-user.target
