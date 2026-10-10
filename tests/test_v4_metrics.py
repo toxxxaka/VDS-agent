@@ -165,3 +165,15 @@ class AIProxyTests(unittest.TestCase):
         with patch.dict("os.environ", {"TIMEWEB_AI_OPENAI_URL": "https://example.test/chat/completions", "TIMEWEB_AI_API_TOKEN": "private"}, clear=False), patch("v4.ai.requests.post", return_value=Response()) as post:
             self.assertEqual(''.join(ai.stream([{"role":"user", "content":"Hi"}])), "Hello world")
             self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer private")
+
+
+    def test_stream_accepts_non_streaming_json_completion(self):
+        from v4 import ai
+        class Response:
+            status_code = 200
+            def iter_lines(self, decode_unicode=True):
+                return iter(())
+            def json(self):
+                return {"choices": [{"message": {"content": "One response"}}]}
+        with patch.dict("os.environ", {"TIMEWEB_AI_OPENAI_URL": "https://example.test/chat/completions", "TIMEWEB_AI_API_TOKEN": "private"}, clear=False), patch("v4.ai.requests.post", return_value=Response()):
+            self.assertEqual("".join(ai.stream([{ "role": "user", "content": "Hi" }])), "One response")

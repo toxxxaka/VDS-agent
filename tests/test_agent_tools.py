@@ -82,6 +82,20 @@ class TelegramAITests(unittest.TestCase):
             reply = telegram_ai.request_action("42", "restart_web")
         self.assertEqual(reply.confirmation_id, 9)
 
+    def test_fallback_is_structured_and_does_not_render_raw_load_dict(self):
+        evidence = {"diagnose_load": {"cpu": {"percent": 9.0}, "load_average": {"1m": 0.35, "5m": 0.24, "15m": 0.4}, "top_processes": [{"pid": 7, "user": "monitorbot", "cpu_percent": 2, "rss_mib": 44.8, "cmd": "/usr/bin/python3 /opt/monitoringbot/v3.py"}]}}
+        reply = telegram_ai._fallback(evidence)
+        self.assertIn("<b>Текущие показатели</b>", reply)
+        self.assertIn("0.35 / 0.24 / 0.4", reply)
+        self.assertNotIn("{'1m'", reply)
+        self.assertIn("<code>PID 7</code>", reply)
+
+    def test_plain_formats_headings_and_escapes_provider_output(self):
+        reply = telegram_ai._plain("Вывод: Всё штатно.\nРекомендации:\n1. Проверить <unsafe> позже")
+        self.assertIn("<b>Вывод</b>", reply)
+        self.assertIn("<b>Рекомендации</b>", reply)
+        self.assertIn("&lt;unsafe&gt;", reply)
+
 
 class McpAuthTests(unittest.TestCase):
     def test_bearer_token_is_compared_exactly(self):

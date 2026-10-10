@@ -114,26 +114,52 @@ def _compact(evidence: dict[str, Any]) -> str:
 
 
 def _plain(text: str) -> str:
+    """Render a provider answer into compact, safe Telegram HTML."""
     text = re.sub(r"```.*?```", "", text, flags=re.S)
-    # Providers sometimes emit pseudo-HTML headings such as <Вывод>.
-    text = re.sub(r"</?(?:Вывод|Доказательства|Рекомендации)>", lambda item: item.group(0).strip("</>") + ":", text, flags=re.I)
-    text = re.sub(r"[*_`#]", "", text)
-    lines = [re.sub(r"\s+", " ", line).strip(" -•") for line in text.splitlines()]
-    clean = [line for line in lines if line]
-    return html.escape("\n".join(clean[:16])[:_MAX_AI_OUTPUT])
+    text = re.sub(r"</?(?:Вывод|Доказательства|Рекомендации|Показатели|Процессы)>", lambda item: item.group(0).strip("</>") + ":", text, flags=re.I)
+    text = re.sub(r"(?im)^\s*(?:#+\s*)?(Вывод|Доказательства|Рекомендации|Показатели|Процессы)\s*:\s*", r"\n\1:\n", text)
+    text = re.sub(r"[*_`]", "", text)
+    raw_lines = []
+    for line in text.splitlines():
+        line = re.sub(r"\s+", " ", line).strip(" -•\t")
+        if line:
+            raw_lines.append(line)
+    if len(raw_lines) == 1:
+        raw_lines = re.split(r"(?<=[.!?])\s+(?=[А-ЯA-ZЁ0-9])", raw_lines[0])
+    rendered = []
+    headings = {"вывод", "доказательства", "рекомендации", "показатели", "процессы"}
+    for line in raw_lines:
+        label = line.rstrip(":").lower()
+        if label in headings:
+            rendered.append(f"<b>{html.escape(line.rstrip(':'))}</b>")
+            continue
+        if re.match(r"^(?:\d+[.)]|[-•])\s*", line):
+            line = re.sub(r"^(?:\d+[.)]|[-•])\s*", "", line)
+            line = "• " + line
+        if len(line) > 320:
+            line = line[:317].rstrip() + "…"
+        rendered.append(html.escape(line))
+        if len(rendered) >= 12:
+            break
+    return "\n".join(rendered)[:_MAX_AI_OUTPUT]
 
 
 def _fallback(evidence: dict[str, Any]) -> str:
     load = evidence.get("diagnose_load", {}) if isinstance(evidence.get("diagnose_load"), dict) else {}
     processes = load.get("top_processes", []) or (evidence.get("process_inspect", {}) if isinstance(evidence.get("process_inspect"), dict) else {}).get("processes", [])
-    lines = ["<b>Вывод:</b>", "Внешний AI временно не ответил. Ниже — только локально измеренные данные."]
+    lines = ["<b>Вывод</b>", "Внешний AI сейчас не ответил. Ниже — свежая локальная диагностика."]
     if load:
         cpu = load.get("cpu", {})
-        lines.append(f"CPU: {cpu.get('percent', '—')}%; load: {load.get('load_average', {})}")
+        averages = load.get("load_average", {})
+        load_text = " / ".join(str(averages.get(key, "—")) for key in ("1m", "5m", "15m"))
+        lines.extend(["", "<b>Текущие показатели</b>", f"• CPU: {cpu.get('percent', '—')}% · load: {load_text}"])
     if processes:
-        lines.append("<b>Top processes</b>")
+        lines.extend(["", "<b>Процессы</b>"])
         for item in processes[:5]:
-            lines.append(f"PID {item.get('pid')} · {html.escape(str(item.get('user','?')))} · CPU {item.get('cpu_percent','?')}% · RSS {item.get('rss_mib','?')} MiB · {html.escape(str(item.get('cmd') or item.get('name','?'))[:100])}")
+            command = str(item.get("cmd") or item.get("name", "?"))[:84]
+            lines.append("• <code>PID {}</code> · {} · CPU {}% · RSS {} MiB\n  <code>{}</code>".format(
+                item.get("pid", "?"), html.escape(str(item.get("user", "?"))), item.get("cpu_percent", "?"),
+                item.get("rss_mib", "?"), html.escape(command)))
     return "\n".join(lines)
 
 

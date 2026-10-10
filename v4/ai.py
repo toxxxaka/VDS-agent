@@ -58,6 +58,7 @@ def stream(messages) -> Iterable[str]:
         response = requests.post(url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}, json=body, stream=True, timeout=(10, 180))
         if response.status_code >= 400:
             raise AIError(f"AI upstream returned HTTP {response.status_code}")
+        emitted = False
         for raw_line in response.iter_lines(decode_unicode=False):
             line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else raw_line
             if not line or not line.startswith("data:"):
@@ -71,6 +72,19 @@ def stream(messages) -> Iterable[str]:
             except (IndexError, TypeError, json.JSONDecodeError):
                 continue
             if isinstance(delta, str) and delta:
+                emitted = True
                 yield delta
+        # Some OpenAI-compatible Agent endpoints acknowledge stream=true but
+        # return one ordinary JSON completion. Treat it as a valid completion
+        # instead of incorrectly reporting an unavailable upstream.
+        if not emitted:
+            try:
+                item = response.json()
+                choice = item.get("choices", [{}])[0]
+                content = choice.get("message", {}).get("content") or choice.get("delta", {}).get("content", "")
+            except (AttributeError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+                content = ""
+            if isinstance(content, str) and content:
+                yield content
     except requests.RequestException as error:
         raise AIError(f"AI upstream is unavailable ({type(error).__name__})") from error
