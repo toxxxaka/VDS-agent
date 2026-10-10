@@ -9,7 +9,12 @@ import psutil
 from .metrics import cpu_percent
 from .storage import connect
 
-SERVICE_NAMES = ("nginx", "ssh", "docker", "fail2ban", "mariadb", "mysql", "redis-server")
+# The personal dashboard shows VDS-Agent and server services only. Missing units
+# are omitted instead of being presented as a problem.
+SERVICE_NAMES = (
+    "monitoringbot", "monitorbot-web", "monitorbot-mcp", "monitorbot-health",
+    "monitorbot-oom", "monitorbot-infrad", "nginx", "ssh", "docker", "fail2ban",
+)
 
 
 def service_states():
@@ -18,9 +23,10 @@ def service_states():
         try:
             result = subprocess.run(["/usr/bin/systemctl", "is-active", name], stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=2, check=False)
             value = result.stdout.strip()
-            states.append({"name": name, "state": value if value in {"active", "inactive", "failed"} else "unknown"})
+            if value in {"active", "inactive", "failed"}:
+                states.append({"name": name, "state": value})
         except (OSError, subprocess.TimeoutExpired):
-            states.append({"name": name, "state": "unknown"})
+            continue
     return states
 
 

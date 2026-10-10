@@ -225,7 +225,7 @@ HTML = (UI_DIR / "index.html").read_text(encoding="utf-8")
 
 def asset(name):
     """Return bundled UI assets only; no filesystem path comes from the request."""
-    allowed = {"app.css": "text/css; charset=utf-8", "app.js": "application/javascript; charset=utf-8"}
+    allowed = {"app.css": "text/css; charset=utf-8", "app.js": "application/javascript; charset=utf-8", "favicon.svg": "image/svg+xml"}
     if name not in allowed:
         return None
     return (UI_DIR / name).read_bytes(), allowed[name]
@@ -278,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(HTML.encode())
             return
-        if self.path in {"/static/app.css", "/static/app.js"}:
+        if self.path in {"/static/app.css", "/static/app.js", "/static/favicon.svg"}:
             item = asset(self.path.rsplit("/", 1)[1])
             if not item:
                 self.reply(404, {"error": "asset not found"})
@@ -386,7 +386,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             session_id = new_session(telegram_user)
             audit(telegram_user, "web_totp", result="ok")
-            self.reply(200, {"ok": True}, {"Set-Cookie": f"mbs={session_id}; HttpOnly; Secure; SameSite=Strict; Path=/"})
+            # Telegram runs the Mini App in an embedded cross-site WebView.
+            # Auth still requires signed initData plus TOTP, so SameSite=None is
+            # needed for the server-side session cookie to round-trip there.
+            self.reply(200, {"ok": True}, {"Set-Cookie": f"mbs={session_id}; HttpOnly; Secure; SameSite=None; Path=/"})
             return
         if not session_user or session_user != telegram_user:
             self.reply(403, {"error": "TOTP required"})
@@ -551,7 +554,7 @@ class Handler(BaseHTTPRequestHandler):
                 with connect() as connection:
                     connection.execute("DELETE FROM pending_actions WHERE id=? AND kind='web_session' AND user_id=?", (session_id, telegram_user))
             audit(telegram_user, "web_logout")
-            self.reply(200, {"ok": True}, {"Set-Cookie": "mbs=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"})
+            self.reply(200, {"ok": True}, {"Set-Cookie": "mbs=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0"})
             return
         if self.path == "/api/incidents/close-all":
             self.reply(200, {"closed": close_all(telegram_user), "warning": "active alerts can open again while their condition persists"})
