@@ -96,6 +96,15 @@ class TelegramAITests(unittest.TestCase):
         self.assertIn("<b>Рекомендации</b>", reply)
         self.assertIn("&lt;unsafe&gt;", reply)
 
+    def test_logs_evidence_never_exceeds_ai_message_limit(self):
+        captured = []
+        def stream(messages):
+            captured.extend(messages)
+            return iter(["Вывод: журнал прочитан."])
+        with patch.object(telegram_ai, "execute", return_value={"output": "x" * 12000}), patch.object(telegram_ai.ai, "stream", side_effect=stream):
+            telegram_ai.ask("42", "logs")
+        self.assertLessEqual(len(captured[-1]["content"]), 4000)
+
 
 class McpAuthTests(unittest.TestCase):
     def test_bearer_token_is_compared_exactly(self):
