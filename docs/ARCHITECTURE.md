@@ -2,7 +2,7 @@
 
 ## Purpose
 
-VDS Agent is a protected personal monitoring console for one Debian server. It combines Telegram operations with an HTTPS browser/Mini App console. It is not a multi-tenant monitoring service.
+VDS Agent is a protected personal monitoring console for one Ubuntu or Debian server. It combines Telegram operations with an HTTPS browser/Mini App console. It is not a multi-tenant monitoring service.
 
 ## Components
 

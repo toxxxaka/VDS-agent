@@ -1,74 +1,35 @@
 # Changelog
 
+All notable changes to VDS Agent are documented here.
+
 ## Unreleased
 
-### Security and reliability
-- Added a read-only, allow-listed WebUI console shared with Telegram AI and MCP; it rejects shell syntax and audits every request.
-- Hardened external SSL and availability targets against private-address resolution.
-- Made runtime SQLite state private on application access and hardened the health, OOM and infrastructure unit templates.
-- Reworked managed nftables rollback to restore the prior `table inet monitoringbot` snapshot instead of merely deleting the current table.
-- Added cached self-monitoring so ordinary UI reads do not repeatedly run service and database checks.
+### Added
 
-### Telegram AI
-- Added focused `/ai` subcommands, compact evidence-first answers, process RSS/uptime fields, bounded atop evidence, socket inspection, output chunking and contextual action buttons.
-- Removed duplicated AI headings and raw provider Markdown from Telegram responses.
-
-
-- Added a shared bounded diagnostics backend for Streamable HTTP MCP and Telegram `/ai`.
-- Added bearer-protected MCP transport, deployment templates and dedicated documentation.
-- Added Telegram AI multi-step diagnostics using the existing private Timeweb Agent, with short-lived caller-bound action confirmation.
-- Reworked remote availability into configurable repeated ICMP/TCP/HTTP checks with `UP`, `DEGRADED`, `DOWN` and `UNKNOWN` states.
-- Added regression and integration coverage for MCP auth, Telegram AI, controlled actions and availability failure modes.
-
-All notable changes to VDS Agent will be documented here.
-
-## [Unreleased]
+- Shared bounded diagnostics backend for Telegram AI, Safe Console and Streamable HTTP MCP.
+- Bearer-protected MCP service, deployment templates and documentation.
+- Telegram `/ai` focused subcommands, bounded multi-step diagnostics, context, owner-bound confirmations and compact evidence-first responses.
+- Safe Console with a fixed read-only command vocabulary, suggestions, history and contextual argument help.
+- Cached authenticated self-monitoring for unit state, metric freshness, backup freshness, SQLite/WAL integrity and recent internal failures.
+- Local SQLite metric series with 30-day retention, a 30-day chart range, downsampling and freshness metadata.
+- Server-event filters, audited bulk close action, and regression tests for telemetry, incidents, API contracts, AI streaming, diagnostics, firewall rollback, availability and console parsing.
+- CI compilation, test, JavaScript syntax and credential-guard stages.
 
 ### Changed
-- Rebuilt WebUI navigation around Dashboard, Metrics, AI and Tools.
-- Moved incident history and Activity into Tools; Dashboard is now a compact current-state overview.
-- Replaced inline WebUI markup with maintainable static `v4/ui` assets.
-- Recovery now automatically closes incidents while retaining recovery timestamps and history.
+
+- Reworked the WebUI around Dashboard, Metrics, AI and Tools, and moved incidents/activity into Tools.
+- Split frontend markup, styles and browser behaviour into maintainable static UI assets.
+- Made metrics refresh follow the real collector timestamp and pause while the browser tab is in the background.
+- Separated periodic metric collection from incident snapshots.
+- Reworked remote availability into repeated ICMP/TCP/HTTP observations with `UP`, `DEGRADED`, `DOWN` and `UNKNOWN` states.
+- Made recovery automatically close incidents while preserving recovery history.
+- Hardened monitoring, OOM, snapshot, WebUI, MCP and infrastructure unit templates and private runtime-state creation.
+- Changed managed nftables rollback to restore the exact prior VDS-Agent table without touching Docker, fail2ban or host firewall tables.
 
 ### Fixed
-- Replaced volatile 100ms CPU sampling with a one-second collector measurement shared by Metrics and Dashboard.
-- Versioned telemetry so pre-fix short-window samples remain retained but do not pollute current charts.
-- Made Metrics live refresh follow the actual collector timestamp and expose stale collection instead of animating a stale chart.
 
-### Added
-- Private Timeweb AI Agent chat with authenticated server-side OpenAI-compatible streaming proxy.
-- 30-day Metrics range and API freshness metadata.
-- Sanitized `config/timeweb-ai.env.example` and optional systemd environment-file integration.
-
-### Added
-- Lightweight local SQLite metric series with 30-day retention and a time index.
-- Interactive Canvas charts for CPU, memory, RX/TX and disk I/O with 1h, 6h, 24h and 7d ranges.
-- Visibility-aware live refresh, countdown indicator, touch/hover tooltips, legends and unit-aware scales.
-- Server events filters and audited bulk close action.
-- AI navigation placeholder without an external AI integration.
-
-
-### Added
-- Hardened HTTPS WebUI
-- Telegram Mini App authentication
-- Incident Engine
-- SQLite/WAL storage
-- System snapshots and statistics
-- Backup management
-- Firewall manager with automatic rollback
-- External diagnostic tools
-- SSH login monitoring
-- CPU, load, network and OOM alerts
-
-### Security
-- TOTP authentication
-- IP allow-list support
-- Restricted privileged helpers
-- Server-side sessions
-- Audit logging
-
-## 2026-10-05 — Reliability hardening
-
-- Added authenticated self-monitoring for service state, telemetry and backup freshness, SQLite/WAL integrity, and recent failed component runs.
-- Added CI for compilation, tests, and accidental-secret detection.
-- Hardened monitoring unit examples and preserved the active V4 deployment model.
+- Replaced volatile short CPU sampling with a one-second collector measurement shared by Metrics and Dashboard.
+- Excluded legacy inaccurate telemetry from current version-two charts while retaining history.
+- Clamped network and disk counter resets so charts never show negative rates.
+- Corrected OOM state-directory hardening and preserved the Telegram journal helper path.
+- Escaped and bounded AI-provider output for Telegram and handled compatible JSON as well as SSE responses.

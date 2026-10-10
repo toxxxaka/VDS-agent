@@ -1,243 +1,187 @@
 # VDS Agent
 
+[![CI](https://github.com/toxxxaka/VDS-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/toxxxaka/VDS-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A security-focused, self-hosted monitoring and operations console for Debian servers.
+VDS Agent is a private, self-hosted monitoring and operations console for a single Ubuntu or Debian server. It combines Telegram alerts and commands, an authenticated HTTPS WebUI, lightweight local metrics, incident history, and a strictly allow-listed diagnostics backend shared by the WebUI, Telegram AI and MCP.
 
-VDS Agent combines a Telegram bot, a hardened HTTPS WebUI, incident tracking, system metrics, controlled administrative actions and isolated privileged helpers.
-
-The project is designed for private infrastructure management — not as a public multi-tenant monitoring platform.
+It is intended for personal infrastructure. It is not a public shell, a multi-tenant monitoring platform, or a replacement for a full observability stack.
 
 ## Features
 
-### Monitoring
+### Monitoring and incidents
 
-- CPU and load average monitoring
-- Memory and swap statistics
-- Disk usage and system status
-- Network throughput and packet-rate monitoring
-- TCP connection and SYN-RECV tracking
-- Linux OOM killer detection
-- SSH login monitoring
-- Lightweight local metric history with 30-day retention
-- Interactive 1h, 6h, 24h, 7d and 30d historical charts
-- Incident diagnostic snapshots kept separately from metric history
-- Recovery notifications and alert cooldowns
+- Tracks CPU, load average, RAM, cache, swap, filesystem capacity, network throughput, packet rates, TCP states, SYN-RECV and disk I/O.
+- Detects OOM-killer events and external SSH logins.
+- Stores local SQLite telemetry for 30 days and exposes 1h, 6h, 24h, 7d and 30d charts.
+- Opens one incident per active condition, records later observations, then closes it automatically after recovery. Recovery timestamps and diagnostic snapshots remain available.
+- Sends alert and recovery notifications without allowing a Telegram failure to stop monitoring.
+- Separates ICMP diagnostics from availability: repeated TCP/HTTP checks determine `UP`, `DEGRADED`, `DOWN` or `UNKNOWN`; an ICMP timeout alone never means a server is down.
 
-### Incident management
+### Telegram bot and AI diagnostics
 
-The Incident Engine opens one event per active condition, records every observation, and automatically closes it when the condition recovers. Recovery time and diagnostic snapshots remain in history. Existing acknowledgement APIs remain compatible, but acknowledgement is intentionally absent from the WebUI. Manual **Close all** is available from Server events; a persistent condition opens a new event on a later health sample.
+The Telegram bot covers status, CPU/RAM/disk/load, uptime, daily reporting, remote checks, SSH sessions, recent logins, controlled session termination and power actions. Sensitive actions use explicit confirmation.
 
-### Telegram
+`/ai` runs only bounded local diagnostic tools and can use an optional private OpenAI-compatible Timeweb Agent for interpretation:
 
-The Telegram bot provides server status, alerts and controlled administrative operations.
+```text
+/ai help
+/ai processes
+/ai cpu
+/ai memory
+/ai disk
+/ai network
+/ai services
+/ai logs
+/ai incidents
+/ai Почему сервер тормозит? Проверь процессы, память, диск и последние ошибки.
+```
 
-Available functionality includes:
-
-- server status
-- CPU, RAM, disk and load statistics
-- uptime
-- remote availability checks with ICMP diagnostics and configurable TCP/HTTP health checks
-- active SSH sessions
-- external SSH login alerts
-- incident management
-- controlled SSH session termination
-- reboot and shutdown operations
-- daily server reports
-- `/ai` natural-language diagnostics through the private Timeweb Agent
-
-Sensitive operations require explicit confirmation.
+The default answer is concise and evidence-first. It identifies measured processes with PID, user, CPU, RSS, command and uptime where relevant. If the AI provider is unavailable, the bot returns a clearly labelled local diagnostic result rather than inventing an explanation.
 
 ### WebUI
 
-The mobile-first HTTPS WebUI provides:
+The mobile-first HTTPS interface works in a regular browser and Telegram Mini App.
 
-- Compact Dashboard
-- Live Metrics (1h, 6h, 24h, 7d)
-- Private Timeweb AI Agent chat through a server-side streaming proxy
-- Bearer-protected Streamable HTTP MCP for ChatGPT
-- Tools, including Server events and Activity
-- Diagnostics
-- Backup management
-- Client script library
-- Firewall management
-- TLS inspection
-- Password generation
-- External HTTP, TCP, DNS and ping checks
-- Safe read-only Linux-style console with history, suggestions and fixed diagnostic commands
+- **Dashboard** — current CPU, memory, disk, network, active problems, monitored services and recent diagnostics.
+- **Metrics** — live local charts for CPU, memory, RX/TX and disk I/O.
+- **AI** — a server-side streaming proxy to the optional private Timeweb Agent. The browser never receives its token.
+- **Tools** — incidents, activity/audit, diagnostics, backups, client script library, firewall, TLS/password/network tools, SSH and power actions.
 
-The interface is designed for both desktop browsers and Telegram Mini Apps.
+Tools also includes **Safe Console**, a Linux-shell-shaped read-only console. It offers history, completions and contextual help for fixed diagnostics such as `processes cpu`, `services failed`, `logs nginx.service`, `network sockets` and `metrics 24h`. It rejects shell syntax, arbitrary paths and unrecognised arguments; it never executes user-entered shell commands.
 
-## Security model
+### MCP
 
-Security-sensitive functionality is deliberately separated from the WebUI.
+An optional Streamable HTTP MCP service exposes the same bounded diagnostic backend to ChatGPT. It supports current status, load/process/service diagnostics, redacted journals, metrics, incidents, availability and self-monitoring. Administrative actions are allow-listed and require a caller-bound second confirmation.
 
-The WebUI does not expose an arbitrary shell and does not directly execute `sudo` or `nft`.
-
-Privileged operations are performed through narrowly scoped, root-owned helpers using fixed protocols and Unix sockets.
-
-Authentication layers include:
-
-- Telegram Mini App `initData` validation
-- Telegram user allow-list
-- IP allow-list for direct browser access
-- TOTP authentication
-- server-side sessions
-- short-lived confirmation tokens for destructive actions
-
-Sessions are stored server-side and protected with secure cookie attributes.
-
-Administrative actions are written to an audit log. Authentication secrets, Telegram tokens, TOTP secrets and confirmation tokens are not written to the audit trail.
-
-## Firewall manager
-
-VDS Agent manages only its own nftables table:
-
-```text
-table inet monitoringbot
-```
-
-Existing Docker and system firewall tables are left untouched.
-
-Firewall changes support:
-
-- ruleset preview
-- pre-change snapshots
-- trusted client IP handling
-- standard and hardened profiles
-- automatic rollback for connectivity-sensitive changes
-
-The hardened profile must be explicitly confirmed after the change or the previous ruleset is restored automatically.
+See [MCP and Telegram AI](docs/MCP.md) for connection settings and tools.
 
 ## Architecture
 
 ```text
-Telegram
-   │
-   ▼
-v3.py
-   │
-   ├── alerts
-   ├── commands
-   ├── authentication
-   └── controlled operations
-
-HTTPS / Telegram Mini App
-   │
-   ▼
-v4/webapp.py
-   │
-   ├── storage.py
-   ├── incidents.py
-   ├── snapshots.py
-   ├── metrics.py          # lightweight local time-series
-   ├── ui/                 # maintainable HTML/CSS/JS WebUI
-   ├── tasks.py
-   ├── backups.py
-   ├── library.py
-   ├── firewall.py
-   └── external_tools.py
-            │
-            ▼
-      restricted helpers
-            │
-            ▼
-        Linux system
+Telegram bot (v3.py)                     HTTPS browser / Telegram Mini App
+      │                                              │
+      ├── alerts, commands, auth                      └── v4/webapp.py
+      └── Telegram /ai                                       │
+                                                               ├── static v4/ui/
+Health and OOM monitors ──► incidents + snapshots ──► SQLite WAL
+Snapshot timer ───────────► local metric samples             │
+                                                               ├── agent_tools.py
+ChatGPT MCP ─────────────────────────────────────────────────┤
+                                                               └── restricted helpers
+                                                                        │
+                                                                  operating system
 ```
 
-Persistent state is stored in SQLite using WAL mode.
+Metric samples and incident snapshots are separate data sets: inexpensive periodic telemetry is retained for charts, while snapshots are created only around incidents.
 
-## Repository layout
+## Security model
 
-```text
-.
-├── v3.py                 # Telegram bot and command handling
-├── health_monitor.py     # CPU, load and network monitoring
-├── oom_monitor.py        # Kernel OOM event monitoring
-├── v4/                   # WebUI and operations backend
-├── systemd/              # Service, timer and helper definitions
-├── config/               # Safe configuration examples
-├── docs/                 # Architecture and deployment documentation
-└── test_v3.py            # Core unit tests
-```
+- HTTPS and reverse-proxy IP allow-lists for direct browser access.
+- Telegram Mini App `initData` validation, Telegram user allow-list and TOTP.
+- Server-side sessions with secure cookie attributes and expiry.
+- A distinct bearer token for MCP.
+- Narrow root-owned helpers for privileged operations.
+- Short-lived, caller-bound confirmations for destructive operations.
+- SQLite audit records for authentication, diagnostics and actions.
+- No arbitrary shell, filesystem, `sudo`, `nft` or root endpoint in the WebUI, Telegram AI or MCP.
+
+Secrets must stay outside the repository. Never commit Telegram tokens, TOTP secrets, MCP/AI tokens, private keys, session/runtime databases or private allow-lists. See [SECURITY.md](SECURITY.md).
 
 ## Requirements
 
-VDS Agent is intended for Linux servers using:
+- Ubuntu 24.04 LTS or a compatible Debian-based system
+- Python 3.11+ and systemd
+- SQLite, nftables and nginx (or an equivalent HTTPS reverse proxy)
+- A Telegram bot for Telegram functionality
+- Optional: an OpenAI-compatible private AI endpoint and an MCP client
 
-- Python 3
-- systemd
-- nftables
-- nginx or another HTTPS reverse proxy
-- SQLite
-- Telegram Bot API
+Python dependencies are declared in `requirements.txt`: `psutil`, `requests`, `mcp` and `uvicorn`.
 
-Python dependencies are listed in `requirements.txt`.
+## Installation and configuration
 
-## Configuration
+Keep source, private configuration and runtime state separate:
 
-Real credentials must never be stored in the repository.
+```text
+/opt/monitoringbot/          deployed application code
+/etc/monitoringbot-main/     private configuration and secrets
+/etc/monitoringbot/          private allow-lists
+/var/lib/monitoringbot/      SQLite and runtime state
+```
 
-Production configuration is expected outside the source tree, for example:
+1. Clone the repository into a reviewable source checkout and create a Python virtual environment for deployment.
+2. Install `requirements.txt` into that environment.
+3. Copy only required `config/*.example` files to the private configuration directories. Replace placeholders there, never in the source checkout.
+4. Install and review the relevant units, root helpers, sudoers examples and nginx virtual hosts from `systemd/`.
+5. Validate unit files and nginx before enabling or reloading anything.
+6. Run the tests and use the health-gated procedure in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+Private files commonly include:
 
 ```text
 /etc/monitoringbot-main/telegram.env
 /etc/monitoringbot-main/auth.json
 /etc/monitoringbot-main/health.json
+/etc/monitoringbot-main/servers.json
+/etc/monitoringbot-main/timeweb-ai.env       # optional
+/etc/monitoringbot-main/mcp.env              # optional
 /etc/monitoringbot/ssh-allowlist.json
 ```
 
-See the sanitized examples in `config/`, including `timeweb-ai.env.example`, `mcp.env.example` and `servers.json.example`.
+Set restrictive ownership and permissions. Tracked examples contain placeholders only.
 
-Remote availability is configured in the private `servers.json` file. ICMP is diagnostic only; repeated TCP/HTTP health checks determine `UP`, `DEGRADED`, `DOWN` or `UNKNOWN`.
+### Metrics and availability
 
-## Deployment
+The snapshot timer records a cheap local point once per minute. The collector uses a one-second CPU sample and counter deltas, clamps counter resets to zero, and retains 30 days. Charts use bounded downsampling while preserving meaningful peaks.
 
-The recommended production layout separates source code, runtime state and secrets:
+Configure remote hosts in private `servers.json` from `config/servers.json.example`. Define TCP ports and optional HTTP endpoints for availability decisions; ICMP remains a separate diagnostic signal.
 
-```text
-/opt/monitoringbot/          application code
-/etc/monitoringbot-main/     private configuration
-/var/lib/monitoringbot/      persistent runtime state
+### Optional Timeweb AI
+
+Copy `config/timeweb-ai.env.example` outside the repository and configure:
+
+Required environment variable names are `TIMEWEB_AI_OPENAI_URL`,
+`TIMEWEB_AI_API_TOKEN` and `TIMEWEB_AI_MODEL`. Copy the tracked example to a
+private environment file and replace its placeholders there.
+
+The backend streams this endpoint only after existing WebUI or Telegram authentication. The browser, MCP client and audit log never receive the AI token. No live server context is sent automatically.
+
+### Optional MCP
+
+Copy `config/mcp.env.example` outside the repository and generate a separate random `MONITORINGBOT_MCP_TOKEN`. Configure the dedicated localhost service and reverse-proxy route. In ChatGPT, connect with the published `/mcp` URL and this Bearer token. Do not reuse Telegram, TOTP or AI credentials as an MCP token.
+
+## Development, testing and release
+
+Development happens on `dev`; `prod` is the reviewed release branch. Publishing source is separate from deploying it to `/opt/monitoringbot`.
+
+```bash
+python3 -m py_compile v3.py health_monitor.py oom_monitor.py v4/*.py tests/*.py
+PYTHONPATH=. python3 -m unittest discover -v
+node --check v4/ui/app.js
+git diff --check
 ```
 
-systemd unit examples are available under `systemd/`. See [operations and release procedure](docs/OPERATIONS.md) before applying a reviewed release.
+GitHub Actions installs dependencies, compiles Python, runs the unit suite, checks browser JavaScript and rejects recognisable credentials. Use the atomic, health-gated process in [docs/OPERATIONS.md](docs/OPERATIONS.md) for a deployment.
 
-## Development workflow
+## Troubleshooting
 
-Development happens in the `dev` branch.
-
-The `prod` branch contains the currently deployable version.
-
-Typical workflow:
-
-```text
-feature/* → dev → prod
-```
-
-Production changes should reach `prod` through reviewed merges rather than direct development.
+| Symptom | First checks |
+| --- | --- |
+| Metrics are stale | Check `monitorbot-snapshot.timer`, the latest SQLite sample and collector journal. |
+| WebUI login fails | Verify the reverse-proxy IP allow-list, Telegram `initData` path, TOTP clock and server-side session state. |
+| AI provider unavailable | Check the private AI environment file, endpoint reachability and `monitorbot-web`/Telegram logs. A local diagnostic fallback remains available. |
+| MCP returns `401` | Supply the separate MCP Bearer token; WebUI/Telegram credentials do not authenticate MCP. |
+| Availability is `UNKNOWN` | Add valid TCP or HTTP checks in private `servers.json`; ICMP alone is diagnostic. |
+| Controlled action does not run | Repeat it using the unexpired confirmation created for the same authenticated caller. |
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Firewall model](docs/FIREWALL.md)
 - [MCP and Telegram AI](docs/MCP.md)
+- [Firewall model](docs/FIREWALL.md)
+- [Operations and release procedure](docs/OPERATIONS.md)
 - [Security policy](SECURITY.md)
 
-## Project status
+## License
 
-VDS Agent is under active development.
-
-The Metrics collector uses local SQLite telemetry and the AI chat requires an explicitly configured private Timeweb Agent endpoint.
-
-## Security notice
-
-This software can perform privileged server operations including firewall changes, SSH session termination, reboot and shutdown.
-
-Review all service files, helpers, sudo rules and network restrictions before deploying it to a production server.
-
-Never commit real Telegram tokens, TOTP secrets, private keys or production authentication files.
-
-## Self-monitoring
-
-Authenticated operators can read `GET /api/self-monitoring` and the Dashboard payload. It reports the health of the Monitoringbot services/timer, metric freshness (180 seconds), successful backup freshness (7 days), recent failed internal commands, and SQLite/WAL integrity and size. It exposes no secrets.
+MIT. See [LICENSE](LICENSE).
