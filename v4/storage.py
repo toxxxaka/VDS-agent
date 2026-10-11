@@ -35,7 +35,6 @@ CREATE INDEX IF NOT EXISTS ix_command_runs_started ON command_runs(started_at DE
 CREATE INDEX IF NOT EXISTS ix_command_runs_status ON command_runs(status,started_at DESC);
 CREATE INDEX IF NOT EXISTS ix_metric_rollups_resolution_time ON metric_rollups(resolution_seconds,bucket_at DESC);
 CREATE INDEX IF NOT EXISTS ix_task_events_run_time ON task_events(run_id,time DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_command_runs_idempotency ON command_runs(user_id,command,idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_outbox_due ON notification_outbox(status,next_attempt_at);
 '''
 
