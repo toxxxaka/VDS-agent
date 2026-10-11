@@ -52,7 +52,7 @@ Tools also includes **Safe Console**, a Linux-shell-shaped read-only console. It
 
 ### MCP
 
-An optional Streamable HTTP MCP service exposes the same bounded diagnostic backend to ChatGPT. It supports current status, load/process/service diagnostics, redacted journals, metrics, incidents, availability and self-monitoring. Administrative actions are allow-listed and require a caller-bound second confirmation.
+An optional Streamable HTTP MCP service exposes the same bounded **read-only** diagnostic backend to ChatGPT. It supports current status, load/process/service diagnostics, redacted journals, metrics, incidents, availability and self-monitoring. Administrative actions are intentionally unavailable through MCP.
 
 See [MCP and Telegram AI](docs/MCP.md) for connection settings and tools.
 
@@ -185,3 +185,15 @@ GitHub Actions installs dependencies, compiles Python, runs the unit suite, chec
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+### Optional resilience and telemetry controls
+
+The non-secret `config/monitoringbot.json.example` template controls bounded
+retention, rollups, database soft-limit reporting and feature flags. All
+resource-intensive additions are disabled by default. Validate a prospective
+configuration with `python3 -m v4.cli check-config` before deployment.
+
+Diagnostic work is stored in SQLite with idempotency keys, lifecycle events,
+cancellation requests and bounded retry. Only read-only diagnostic tasks are
+eligible for automatic recovery after a worker restart; backup and controlled
+operations are recorded as failed rather than replayed.

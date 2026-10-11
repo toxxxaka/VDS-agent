@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vds-agent"
+version = "0.9.0.dev0"
+description = "Self-hosted evidence-first monitoring and safe server operations"
+requires-python = ">=3.10"
+dependencies = ["psutil", "requests", "mcp>=1.12,<2", "uvicorn>=0.30,<1"]
+
+[project.scripts]
+vds-agent = "v4.cli:main"
+
+[tool.setuptools]
+packages = ["v4"]

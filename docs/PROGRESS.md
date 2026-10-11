@@ -14,4 +14,8 @@
 | S-05 authentication replay protection | ready for review | 2026-10-11 | Browser initData and TOTP time steps are single-use; Telegram bot TOTP steps are also single-use; sensitive WebUI and Telegram actions require a TOTP no older than 60 seconds. Source-only until a reviewed deployment. |
 | S-01, S-02, S-06, S-09 | blocked / in progress | 2026-10-11 | See `docs/PHASE1_GATE.md`: CSP requires observation and Telegram Web validation; firewall/Docker changes remain excluded by prior owner decision. |
 | S-04 main-site rate limits | ready for review | 2026-10-11 | 20 req/s, burst 40, 30 connections/IP live; controlled verification produced 503 under excess load without affecting declared sites. |
-| SEC-01…SEC-13 | not started | — | requires Phase 2 implementation after Phase 1 gate |
+| SEC-01…SEC-13 | in progress | 2026-10-12 | Initial shared backend hardening and deny-by-default API tests are on local `dev`; remaining controls require separate review. |
+| Product stage 0 | ready for review | 2026-10-12 | Scope, feature-flag and resource-budget documents recorded. |
+| Product stage 1 | ready for review | 2026-10-12 | Stdlib typed non-secret config, package metadata and `vds-agent check-config`; `v3.py` remains compatible entry point. |
+| Product stage 2 | ready for review | 2026-10-12 | SQLite durable task lifecycle, cancellation/idempotency/retry/recovery plus opt-in outbox implemented in source. |
+| Product stage 3 | ready for review | 2026-10-12 | Rollups, PSI/inodes, Flight Recorder behind a flag, alert state machine and DNS/HTTP/TLS availability extensions implemented in source. |

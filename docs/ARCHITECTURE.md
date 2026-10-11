@@ -38,8 +38,9 @@ All actions are audit logged. Secrets, TOTP values, Telegram credentials, sessio
 | --- | --- | --- |
 | Incidents | `incidents`, `incident_events` | Event lifecycle, severity, timestamps and context |
 | Incident context | `snapshots` | Lightweight diagnostic snapshot only when an incident occurs |
-| Historical metrics | `metric_samples` | Raw local counters for charts; independent of incident snapshots |
-| Actions | `audit_log`, `command_runs`, `pending_actions` | Audit history, diagnostics and short-lived confirmations/sessions |
+| Historical metrics | `metric_samples`, `metric_rollups` | Raw local counters plus bounded 5-minute/hourly rollups; independent of incident snapshots |
+| Actions | `audit_log`, `command_runs`, `task_events`, `pending_actions` | Audit history, durable diagnostics and short-lived confirmations/sessions |
+| Notifications | `notification_outbox` | Opt-in idempotent retry queue; disabled by default |
 
 On first start of this revision, `metric_samples` and its time index are created without deleting `snapshots`. Existing `recovered` incidents are logically migrated to `closed`, keeping `recovered_at` intact.
 
@@ -47,7 +48,7 @@ On first start of this revision, `metric_samples` and its time index are created
 
 The existing `monitorbot-snapshot.timer` remains the collector cadence: once per minute. CPU is measured across a one-second interval to avoid falsely treating a short scheduler burst as a full-minute 100% load. It reads only local `psutil` counters: CPU percentage/load, RAM/cache/available, filesystem usage, network byte counters and disk read/write counters. It does not run service checks, external requests, or diagnostic commands for each point.
 
-`metrics.record()` retains 30 days and labels the new one-second collector as telemetry version 2. Existing short-window samples remain stored as legacy history but are excluded from version-2 charts, so inaccurate 100% points do not contaminate the new series. It and deletes expired points during normal collection. `/api/metrics?range=1h|6h|24h|7d|30d` returns at most 360 visual points. Downsampling preserves per-bucket CPU and rate peaks, and emits the newest gauge values. Counter deltas are clamped to zero after reboot/interface/disk counter resets, so client charts never receive negative rates.
+`metrics.record()` retains configurable raw history (30 days by default), writes 5-minute and hourly rollups, and removes expired data during normal collection. Current telemetry uses version 3; older samples remain stored for compatibility but are excluded from current charts. `/api/metrics?range=1h|6h|24h|7d|30d` returns bounded visual points. Downsampling preserves per-bucket CPU and rate peaks, and emits the newest gauge values. Counter deltas are clamped to zero after reboot/interface/disk counter resets, so client charts never receive negative rates.
 
 The UI paints Canvas charts for CPU, memory, RX/TX and disk I/O. It supplies axis units, legends, timestamps, hover/touch tooltips and a LIVE indicator derived from the last stored sample timestamp. It schedules the next fetch for the expected collector cycle, marks data stale if no sample appears within two cycles, and refreshes immediately when the document returns from the background.
 

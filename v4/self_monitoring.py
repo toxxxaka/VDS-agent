@@ -8,6 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from .config import load as load_settings
 from .metrics import latest
 from .storage import DB, rows
 
@@ -85,11 +86,14 @@ def collect(now: float | None = None, path: Path = DB, cache: Path = CACHE) -> d
     )
     backup_age = None if not backups or backups[0]["finished_at"] is None else max(0.0, now - float(backups[0]["finished_at"]))
     upstream_ok, _ = _run(["/usr/bin/systemctl", "is-active", "monitorbot-web.service"])
+    database["soft_limit_bytes"] = load_settings().telemetry.database_soft_limit_mib * 1024 * 1024
+    database["within_soft_limit"] = database["size_bytes"] + database["wal_bytes"] <= database["soft_limit_bytes"]
     checks = {
         "services": all(item["healthy"] for item in services),
         "failed_units": _failed_ok and not bool(failed_unit_lines),
         "metrics": metric_age is not None and metric_age <= CACHE_MAX_AGE,
         "database": database["ok"],
+        "database_size": database["within_soft_limit"],
         # No completed backup is "not configured/unknown", not a broken service.
         "backups": backup_age is None or backup_age <= 604800,
         "components": not failures,

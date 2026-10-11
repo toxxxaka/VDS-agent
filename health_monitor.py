@@ -5,6 +5,9 @@ from pathlib import Path
 import requests
 from v4.incidents import observe
 from v4.snapshots import capture
+from v4.alerting import AlertPolicy, advance
+from v4.config import load as load_settings
+from v4.flight_recorder import FlightRecorder
 try:
     import psutil
 except ImportError:
@@ -16,6 +19,7 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 LOG = logging.getLogger("monitorbot-health")
 SESSION = requests.Session(); SESSION.trust_env = False
+RECORDER = None
 
 DEFAULT = {"interval_seconds": 10, "consecutive_samples": 3, "reminder_seconds": 900,
            "cpu_percent": 90, "load_one": 1.0, "per_cpu_load": 1.0,
@@ -71,27 +75,59 @@ def tcp_counts():
         if state == "03": syn_recv += 1
     return total, syn_recv
 
-def notify(state, key, active, text, cfg):
+def _quiet_now(cfg, now):
+    # UTC hour ranges, e.g. [[23, 7]]. A quiet period suppresses delivery but
+    # never hides incidents or recovery in the database.
+    for item in cfg.get("quiet_hours", []):
+        if isinstance(item, list) and len(item) == 2 and all(isinstance(value, int) for value in item):
+            hour = time.gmtime(now).tm_hour
+            if (item[0] <= item[1] and item[0] <= hour < item[1]) or (item[0] > item[1] and (hour >= item[0] or hour < item[1])):
+                return True
+    return False
+
+
+def _flight():
+    global RECORDER
+    telemetry = load_settings().telemetry
+    if not telemetry.flight_recorder_enabled:
+        return None
+    if RECORDER is None or RECORDER.interval_seconds != telemetry.flight_recorder_interval_seconds:
+        RECORDER = FlightRecorder(telemetry.flight_recorder_interval_seconds, telemetry.flight_recorder_window_seconds)
+    return RECORDER
+
+
+def notify(state, key, active, text, cfg, severity="high"):
     alerts = state.setdefault("alerts", {})
-    record = alerts.setdefault(key, {"count": 0, "active": False, "last_sent": 0})
-    record["count"] = record["count"] + 1 if active else 0
     now = time.time()
-    if active and record["count"] >= cfg["consecutive_samples"]:
-        if not record["active"] or now - record["last_sent"] >= cfg["reminder_seconds"]:
-            snapshot_id, _ = capture(key)
-            iid, event = observe(key, "high", True, 0, 0, snapshot_id, {"message": text})
-            send(f"{text}\nIncident: #{iid}"); record["last_sent"] = now
-        record["active"] = True
-    elif not active and record["active"]:
-        iid, event = observe(key, "high", False, 0, 0, None, {})
-        send(f"✅ Восстановление: {key}" + (f"\nIncident: #{iid}" if iid else ""))
-        record.update({"active": False, "count": 0, "last_sent": now})
+    policy = AlertPolicy(
+        for_samples=max(1, int(cfg.get("consecutive_samples", 3))),
+        recovery_samples=max(1, int(cfg.get("recovery_samples", 1))),
+        reminder_seconds=max(30, int(cfg.get("reminder_seconds", 900))),
+        severity=severity,
+        quiet=_quiet_now(cfg, now),
+    )
+    record, event = advance(alerts.get(key), active, policy, now)
+    alerts[key] = record
+    if event in {"opened", "reminder"}:
+        recorder = _flight()
+        evidence = recorder.snapshot(key, now) if recorder and event == "opened" else None
+        snapshot_id, _ = capture(key, evidence)
+        iid, _ = observe(key, severity, True, 0, 0, snapshot_id, {"message": text, "alert_event": event})
+        if not policy.quiet:
+            send(f"{text}\nIncident: #{iid}")
+    elif event == "recovered":
+        iid, _ = observe(key, severity, False, 0, 0, None, {})
+        if not policy.quiet:
+            send(f"✅ Восстановление: {key}" + (f"\nIncident: #{iid}" if iid else ""))
 
 def sample(state, cfg):
     cores = os.cpu_count() or 1
     load1, load5, load15 = os.getloadavg(); per_core = load1 / cores
     cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
     context = f"CPU: {cpu:.0f}%\nLA: {load1:.2f} / {load5:.2f} / {load15:.2f}\nНа ядро: {per_core:.2f}\nЯдер: {cores}"
+    recorder = _flight()
+    if recorder:
+        recorder.append({"time": time.time(), "cpu_percent": cpu, "load1": load1, "load5": load5, "load15": load15, "cores": cores})
     notify(state, "CPU", cpu >= cfg["cpu_percent"], f"⚠️ Высокая загрузка CPU\n{context}", cfg)
     notify(state, "LA 1 мин", load1 > cfg["load_one"], f"⚠️ Высокий Load Average\n{context}", cfg)
     notify(state, "LA на ядро", per_core > cfg["per_cpu_load"], f"⚠️ Высокая нагрузка на ядро\n{context}", cfg)

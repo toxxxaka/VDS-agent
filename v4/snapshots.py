@@ -48,8 +48,17 @@ def overview():
     }
 
 
-def capture(kind):
+def store(kind, data):
+    """Persist an already bounded incident evidence object."""
+    with connect() as connection:
+        cursor = connection.execute("INSERT INTO snapshots(time,kind,data) VALUES(?,?,?)", (time.time(), kind, json.dumps(data)))
+        return cursor.lastrowid, data
+
+
+def capture(kind, evidence=None):
     data = overview()
+    if evidence is not None:
+        data["flight_recorder"] = evidence
     data["kind"] = kind
     processes = []
     for process in psutil.process_iter(["pid", "name", "username", "cpu_percent", "memory_info"]):
@@ -59,9 +68,7 @@ def capture(kind):
             continue
     data["top_cpu"] = sorted(processes, key=lambda item: item["cpu"], reverse=True)[:10]
     data["top_rss"] = sorted(processes, key=lambda item: item["rss"], reverse=True)[:10]
-    with connect() as connection:
-        cursor = connection.execute("INSERT INTO snapshots(time,kind,data) VALUES(?,?,?)", (time.time(), kind, json.dumps(data)))
-        return cursor.lastrowid, data
+    return store(kind, data)
 
 
 def record_metric():

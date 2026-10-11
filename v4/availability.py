@@ -1,10 +1,13 @@
-"""Remote server availability: ICMP diagnostics plus configured TCP/HTTP health checks."""
+"""Remote availability: ICMP diagnostics plus explicit DNS/TCP/HTTP/TLS checks."""
 from __future__ import annotations
 
 import json
 import os
+import re
 import socket
+import ssl
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -37,7 +40,22 @@ def _server(value: Any) -> dict[str, Any]:
         parsed = urlparse(str(url))
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("http_url must be an absolute HTTP(S) URL")
-    return {"name": name.strip(), "host": host.strip(), "tcp_ports": list(dict.fromkeys(ports)), "http_url": url}
+    body = value.get("http_body_regex")
+    if body is not None:
+        if not isinstance(body, str) or len(body) > 256:
+            raise ValueError("http_body_regex must be a short string")
+        try:
+            re.compile(body)
+        except re.error as error:
+            raise ValueError("invalid http_body_regex") from error
+    status = value.get("http_status", [200, 399])
+    if not isinstance(status, list) or len(status) != 2 or any(isinstance(item, bool) or not isinstance(item, int) for item in status) or not 100 <= status[0] <= status[1] <= 599:
+        raise ValueError("http_status must be [minimum, maximum]")
+    tls_warn = value.get("tls_expiry_warning_days", 21)
+    if isinstance(tls_warn, bool) or not isinstance(tls_warn, int) or not 1 <= tls_warn <= 365:
+        raise ValueError("invalid tls_expiry_warning_days")
+    return {"name": name.strip(), "host": host.strip(), "tcp_ports": list(dict.fromkeys(ports)), "http_url": url,
+            "http_body_regex": body, "http_status": status, "tls_expiry_warning_days": tls_warn}
 
 
 def load_config(fallback: dict[str, str] | None = None, path: Path = CONFIG) -> dict[str, Any]:
@@ -50,13 +68,10 @@ def load_config(fallback: dict[str, str] | None = None, path: Path = CONFIG) -> 
     except FileNotFoundError:
         value = defaults
         value["servers"] = [{"name": name, "host": host, "tcp_ports": [22]} for name, host in (fallback or {}).items()]
-    attempts = int(value["attempts"])
-    failure_threshold = int(value["failure_threshold"])
-    recovery_threshold = int(value["recovery_threshold"])
+    attempts, failure_threshold, recovery_threshold = int(value["attempts"]), int(value["failure_threshold"]), int(value["recovery_threshold"])
     if not 1 <= attempts <= 4 or not 1 <= failure_threshold <= 5 or not 1 <= recovery_threshold <= 5:
         raise ValueError("invalid availability thresholds")
-    servers = [_server(item) for item in value.get("servers", [])]
-    return {"attempts": attempts, "failure_threshold": failure_threshold, "recovery_threshold": recovery_threshold, "servers": servers}
+    return {"attempts": attempts, "failure_threshold": failure_threshold, "recovery_threshold": recovery_threshold, "servers": [_server(item) for item in value.get("servers", [])]}
 
 
 def _icmp(host: str) -> bool:
@@ -66,40 +81,76 @@ def _icmp(host: str) -> bool:
         return False
 
 
+def _dns(host: str) -> bool:
+    try:
+        return bool(socket.getaddrinfo(host, None, type=socket.SOCK_STREAM))
+    except OSError:
+        return False
+
+
 def _tcp(host: str, port: int) -> bool:
     try:
         with socket.create_connection((host, port), timeout=3):
             return True
     except ConnectionRefusedError:
-        return True  # The peer answered; the service is intentionally closed.
+        return True  # The peer answered; a closed optional port is reachable.
     except OSError:
         return False
 
 
-def _http(url: str) -> tuple[bool, int | None]:
+def _http_detail(url: str, expected: list[int], body_regex: str | None) -> tuple[bool, int | None, float | None]:
+    started = time.monotonic()
     try:
         response = requests.get(url, timeout=(3, 5), allow_redirects=True, headers={"User-Agent": "VDS-Agent/1.0"})
-        return 200 <= response.status_code < 400, response.status_code
+        status_ok = expected[0] <= response.status_code <= expected[1]
+        body_ok = body_regex is None or re.search(body_regex, response.text[:262144]) is not None
+        return status_ok and body_ok, response.status_code, round((time.monotonic() - started) * 1000, 1)
     except requests.RequestException:
-        return False, None
+        return False, None, round((time.monotonic() - started) * 1000, 1)
+
+
+def _http(url: str) -> tuple[bool, int | None]:
+    """Compatibility wrapper retained for existing callers and tests."""
+    ok, status, _elapsed = _http_detail(url, [200, 399], None)
+    return ok, status
+
+
+def _tls_days(url: str) -> int | None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return None
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((parsed.hostname, parsed.port or 443), timeout=3) as raw:
+            with context.wrap_socket(raw, server_hostname=parsed.hostname) as wrapped:
+                certificate = wrapped.getpeercert()
+        return max(0, int((ssl.cert_time_to_seconds(certificate["notAfter"]) - time.time()) // 86400))
+    except (OSError, ssl.SSLError, KeyError, ValueError):
+        return None
 
 
 def probe(server: dict[str, Any], attempts: int = 2) -> dict[str, Any]:
-    """Run bounded checks. ICMP is diagnostic only; services determine availability."""
-    icmp = []
+    """ICMP is diagnostic only; repeated configured service checks decide DOWN."""
+    server = _server(server)
+    icmp, dns = [], []
     tcp: dict[int, list[bool]] = {port: [] for port in server["tcp_ports"]}
-    http: list[tuple[bool, int | None]] = []
+    http: list[tuple[bool, int | None, float | None]] = []
     for _ in range(attempts):
+        dns.append(_dns(server["host"]))
         icmp.append(_icmp(server["host"]))
         for port in tcp:
             tcp[port].append(_tcp(server["host"], port))
         if server["http_url"]:
-            http.append(_http(server["http_url"]))
-    checks = [{"kind": "icmp", "ok": any(icmp), "attempts": len(icmp)}]
+            http.append(_http_detail(server["http_url"], server["http_status"], server["http_body_regex"]))
+    checks = [{"kind": "dns", "ok": any(dns), "attempts": len(dns)}, {"kind": "icmp", "ok": any(icmp), "attempts": len(icmp)}]
     checks.extend({"kind": "tcp", "port": port, "ok": any(values), "attempts": len(values)} for port, values in tcp.items())
     if http:
-        checks.append({"kind": "http", "url": server["http_url"], "ok": any(value[0] for value in http), "status": next((value[1] for value in reversed(http) if value[1] is not None), None), "attempts": len(http)})
-    service_checks = [item for item in checks if item["kind"] in {"tcp", "http"}]
+        latencies = [entry[2] for entry in http if entry[2] is not None]
+        checks.append({"kind": "http", "url": server["http_url"], "ok": any(value[0] for value in http), "status": next((value[1] for value in reversed(http) if value[1] is not None), None), "attempts": len(http), "response_ms": latencies[-1] if latencies else None, "p95_ms": max(latencies) if latencies else None})
+        days = _tls_days(server["http_url"])
+        if days is not None:
+            checks.append({"kind": "tls", "ok": days >= server["tls_expiry_warning_days"], "days_remaining": days, "warning_days": server["tls_expiry_warning_days"]})
+    service_checks = [item for item in checks if item["kind"] in {"tcp", "http", "tls"}]
     if not service_checks:
         candidate = "UP" if any(icmp) else "UNKNOWN"
     elif all(item["ok"] for item in service_checks):
@@ -118,20 +169,14 @@ def _previous(previous: Any) -> dict[str, Any]:
 
 
 def stabilise(result: dict[str, Any], previous: Any, failure_threshold: int, recovery_threshold: int) -> dict[str, Any]:
-    """Apply failure/recovery thresholds without turning ICMP loss into DOWN."""
     before = _previous(previous)
     candidate = result["candidate"]
-    failures = int(before.get("failure_streak", 0))
-    recoveries = int(before.get("recovery_streak", 0))
+    failures, recoveries = int(before.get("failure_streak", 0)), int(before.get("recovery_streak", 0))
     old_status = before.get("status", "UNKNOWN") if before.get("status") in STATES else "UNKNOWN"
     if candidate == "DOWN":
-        failures += 1
-        recoveries = 0
-        status = "DOWN" if failures >= failure_threshold else "DEGRADED"
+        failures += 1; recoveries = 0; status = "DOWN" if failures >= failure_threshold else "DEGRADED"
     elif candidate == "UP":
-        recoveries += 1
-        failures = 0
-        status = "UP" if old_status != "DOWN" or recoveries >= recovery_threshold else "DEGRADED"
+        recoveries += 1; failures = 0; status = "UP" if old_status != "DOWN" or recoveries >= recovery_threshold else "DEGRADED"
     elif candidate == "DEGRADED":
         status, failures, recoveries = "DEGRADED", 0, 0
     else:
@@ -141,9 +186,5 @@ def stabilise(result: dict[str, Any], previous: Any, failure_threshold: int, rec
 
 def check_all(config: dict[str, Any], previous: dict[str, Any] | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     prior = (previous or {}).get("servers", previous or {})
-    output: dict[str, dict[str, Any]] = {}
-    for server in config["servers"]:
-        result = probe(server, config["attempts"])
-        output[server["name"]] = stabilise(result, prior.get(server["name"]), config["failure_threshold"], config["recovery_threshold"])
-    state = {"version": 2, "servers": {name: {"status": item["status"], "failure_streak": item["failure_streak"], "recovery_streak": item["recovery_streak"]} for name, item in output.items()}}
-    return output, state
+    output = {server["name"]: stabilise(probe(server, config["attempts"]), prior.get(server["name"]), config["failure_threshold"], config["recovery_threshold"]) for server in config["servers"]}
+    return output, {"version": 3, "servers": {name: {"status": item["status"], "failure_streak": item["failure_streak"], "recovery_streak": item["recovery_streak"]} for name, item in output.items()}}

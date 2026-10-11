@@ -63,3 +63,29 @@ the same allow-listed backend. They do not accept arbitrary shell syntax. A
 controlled action has a short expiry, a user-bound confirmation, an audit
 record, bounded runtime and a root-owned helper. High-risk changes such as
 firewall, restart, reboot and shutdown require a separate confirmation.
+
+## Optional stage 1–3 configuration
+
+`config/monitoringbot.json.example` is a non-secret template. Copy it outside
+of the checkout as `/etc/monitoringbot-main/config.json` only after reviewing
+its values and file ownership. Validate it before a release:
+
+```bash
+PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli check-config
+```
+
+The Flight Recorder, adaptive baseline, Telegram outbox and external heartbeat
+are disabled by default. Enabling a flag is a reviewed configuration change,
+not a deployment prerequisite. The recorder keeps at most 512 KiB of process
+memory and writes evidence to SQLite only when an incident opens.
+
+## SQLite migration and rollback
+
+This revision uses additive SQLite migrations: new task, outbox and metric
+rollup tables are created on first application open; new columns have defaults.
+Existing metric samples, incidents and command history are never rewritten.
+
+Before deployment, take the normal runtime database backup. To roll back the
+application code, restore the previous release symlink and restart the same
+units. The additional tables can remain; older code ignores them. Do not delete
+SQLite tables as part of rollback.

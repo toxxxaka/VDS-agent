@@ -1,0 +1,16 @@
+{
+  "telemetry": {
+    "raw_retention_days": 30,
+    "rollup_5m_retention_days": 7,
+    "rollup_1h_retention_days": 30,
+    "database_soft_limit_mib": 256,
+    "flight_recorder_enabled": false,
+    "flight_recorder_interval_seconds": 5,
+    "flight_recorder_window_seconds": 300
+  },
+  "features": {
+    "adaptive_baseline": false,
+    "telegram_outbox": false,
+    "external_heartbeat": false
+  }
+}

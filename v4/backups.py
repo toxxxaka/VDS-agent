@@ -14,7 +14,8 @@ def bridge(payload):
     response=json.loads(b''.join(chunks).decode())
     if not response.get('ok'): raise RuntimeError(response.get('error','backup bridge failed'))
     return response
-SPEC=TaskSpec('backup','Backup','Rsync backup with log and metadata','Backups',86400)
+# A backup can create data at the destination, therefore it is never auto-retried.
+SPEC=TaskSpec('backup','Backup','Rsync backup with log and metadata','Backups',86400, retryable=False, max_attempts=1)
 
 def destinations():
     return json.loads(bridge({'action':'destinations'})['stdout'])

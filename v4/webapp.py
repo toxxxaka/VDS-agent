@@ -25,7 +25,7 @@ from . import external_tools
 from . import ai
 from . import self_monitoring
 from . import console
-from .tasks import TASKS, get_run, list_runs, start_run
+from .tasks import TASKS, get_run, list_runs, start_run, recover_pending, cancel_run
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 AUTH = Path(os.environ.get("MONITORINGBOT_AUTH_CONFIG", "/etc/monitoringbot-main/auth.json"))
@@ -555,10 +555,18 @@ class Handler(BaseHTTPRequestHandler):
             try: self.reply(200,library_issue_link(telegram_user,self.path.split("/")[-2]))
             except ValueError as exc: self.reply(404,{"error":str(exc)})
             return
+        if re.fullmatch(r"/api/runs/[0-9a-f-]{36}/cancel", self.path):
+            run = cancel_run(telegram_user, self.path.split("/")[-2])
+            if run is None:
+                self.reply(404, {"error": "run was not found"})
+            else:
+                self.reply(200, run)
+            return
         if self.path == "/api/runs":
-            command = str((self.body() or {}).get("command", ""))
+            data = self.body() or {}
+            command = str(data.get("command", ""))
             try:
-                self.reply(202, start_run(telegram_user, command, command_result))
+                self.reply(202, start_run(telegram_user, command, command_result, data.get("idempotency_key")))
             except ValueError as exc:
                 self.reply(400, {"error": str(exc)})
             return
@@ -642,6 +650,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Resume only queued, idempotent diagnostics. Controlled work is never replayed.
+    recover_pending(command_result)
     ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("MONITORINGBOT_WEB_PORT", "8787"))), Handler).serve_forever()
 
 
