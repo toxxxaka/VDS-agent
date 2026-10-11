@@ -59,30 +59,34 @@ class SSHLoginMonitorTests(unittest.TestCase):
             bot.ACTION_STATE_FILE, bot.SERVERCTL = old_state, old_serverctl
 
     def test_totp_login_session(self):
-        old_config, old_state, old_totp = bot.AUTH_CONFIG_FILE, bot.AUTH_STATE_FILE, bot.totp_valid
+        old_config, old_state, old_totp = bot.AUTH_CONFIG_FILE, bot.AUTH_STATE_FILE, bot.totp_step
         bot.AUTH_CONFIG_FILE = Path(self.directory.name) / "auth.json"
         bot.AUTH_STATE_FILE = Path(self.directory.name) / "auth-state.json"
         bot.AUTH_CONFIG_FILE.write_text(json.dumps({"allowed_user_ids": ["TGID"], "totp_secret": "TEST", "session_seconds": 3600}))
-        bot.totp_valid = lambda secret, code: secret == "TEST" and code == "123456"
+        bot.totp_step = lambda secret, code: 123 if secret == "TEST" and code == "123456" else None
         try:
             ok, _ = bot.login("TGID", "123456")
             self.assertTrue(ok)
             self.assertTrue(bot.authenticated("TGID"))
             bot.logout("TGID")
             self.assertFalse(bot.authenticated("TGID"))
+            ok, message = bot.login("TGID", "123456")
+            self.assertFalse(ok)
+            self.assertIn("already used", message)
         finally:
-            bot.AUTH_CONFIG_FILE, bot.AUTH_STATE_FILE, bot.totp_valid = old_config, old_state, old_totp
+            bot.AUTH_CONFIG_FILE, bot.AUTH_STATE_FILE, bot.totp_step = old_config, old_state, old_totp
 
     def test_power_confirmation_preserves_case(self):
-        old_execute, old_send = bot.execute_power_action, bot.send
+        old_execute, old_send, old_recent = bot.execute_power_action, bot.send, bot.recent_totp
         received = []
         try:
             bot.execute_power_action = lambda action, token: (received.extend([action, token]) or (True, "Command accepted."))
+            bot.recent_totp = lambda _user: True
             bot.send = lambda message: True
             bot.process_authenticated_command("/reboot confirm AbC_XyZ")
             self.assertEqual(received, ["reboot", "AbC_XyZ"])
         finally:
-            bot.execute_power_action, bot.send = old_execute, old_send
+            bot.execute_power_action, bot.send, bot.recent_totp = old_execute, old_send, old_recent
     def test_ai_command_uses_existing_authenticated_dispatch(self):
         old_send = bot.send
         messages = []

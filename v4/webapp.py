@@ -5,6 +5,7 @@ import ipaddress
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import time
 import urllib.parse
@@ -61,9 +62,11 @@ def browser_principal(client_ip):
 def initdata_ok(raw):
     """Validate Telegram's signed initData and return an allow-listed user id."""
     try:
-        query = urllib.parse.parse_qs(raw, strict_parsing=True)
-        supplied_hash = query.pop("hash", [None])[0]
-        data = {key: value[0] for key, value in query.items()}
+        pairs = urllib.parse.parse_qsl(raw, keep_blank_values=True, strict_parsing=True)
+        if len({key for key, _value in pairs}) != len(pairs):
+            return None
+        data = dict(pairs)
+        supplied_hash = data.pop("hash", None)
         auth_date = int(data["auth_date"])
         user = json.loads(data["user"])
         check = "\n".join(f"{key}={data[key]}" for key in sorted(data))
@@ -80,16 +83,52 @@ def initdata_ok(raw):
         return None
 
 
-def clear_expired(connection):
-    connection.execute("DELETE FROM pending_actions WHERE expires_at < ?", (time.time(),))
+def clear_expired(connection, now=None):
+    current = time.time() if now is None else now
+    connection.execute("DELETE FROM pending_actions WHERE expires_at < ?", (current,))
+    connection.execute("DELETE FROM web_auth_replays WHERE expires_at < ?", (current,))
+
+
+def consume_initdata(raw, user, now=None):
+    """Consume signed Telegram initData once after a successful TOTP check."""
+    if not raw:
+        return True  # IP-restricted browser login has no Telegram payload.
+    current = time.time() if now is None else now
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    with connect() as connection:
+        clear_expired(connection, current)
+        try:
+            connection.execute(
+                "INSERT INTO web_auth_replays(digest,user_id,expires_at) VALUES(?,?,?)",
+                (digest, str(user), current + 300),
+            )
+        except sqlite3.IntegrityError:
+            return False
+    return True
+
+
+def consume_totp_step(user, step, now=None):
+    """Accept one TOTP time step per browser principal exactly once."""
+    current = time.time() if now is None else now
+    with connect() as connection:
+        row = connection.execute("SELECT time_step FROM web_totp_steps WHERE user_id=?", (str(user),)).fetchone()
+        if row and int(row["time_step"]) == int(step):
+            return False
+        connection.execute(
+            "INSERT INTO web_totp_steps(user_id,time_step,accepted_at) VALUES(?,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET time_step=excluded.time_step,accepted_at=excluded.accepted_at",
+            (str(user), int(step), current),
+        )
+    return True
 
 
 def new_session(user):
+    now = time.time()
     with connect() as connection:
-        clear_expired(connection)
+        clear_expired(connection, now)
         cursor = connection.execute(
             "INSERT INTO pending_actions(kind,user_id,target,expires_at,data) VALUES(?,?,?,?,?)",
-            ("web_session", user, "", time.time() + TTL, "{}"),
+            ("web_session", user, "", now + TTL, json.dumps({"totp_at": now})),
         )
         return cursor.lastrowid
 
@@ -103,14 +142,31 @@ def cookie_session_id(header):
         return None
 
 
-def web_user(header):
+def web_session(header, now=None):
     session_id = cookie_session_id(header)
     if session_id is None:
         return None
     with connect() as connection:
-        clear_expired(connection)
-        row = connection.execute("SELECT user_id FROM pending_actions WHERE id=? AND kind='web_session'", (session_id,)).fetchone()
-        return row["user_id"] if row else None
+        clear_expired(connection, now)
+        row = connection.execute("SELECT user_id,data FROM pending_actions WHERE id=? AND kind='web_session'", (session_id,)).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row["data"] or "{}")
+        except json.JSONDecodeError:
+            data = {}
+        return {"user_id": row["user_id"], "totp_at": float(data.get("totp_at", 0))}
+
+
+def web_user(header):
+    session = web_session(header)
+    return session["user_id"] if session else None
+
+
+def web_recent_totp(header, user, max_age=60, now=None):
+    current = time.time() if now is None else now
+    session = web_session(header, current)
+    return bool(session and session["user_id"] == str(user) and 0 <= current - session["totp_at"] <= max_age)
 
 
 def create_confirmation(user, kind, target, data=None):
@@ -269,6 +325,13 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return telegram_user
 
+    def require_recent_totp(self, user):
+        if web_recent_totp(self.headers.get("Cookie", ""), user):
+            return True
+        audit(user, "web_step_up", result="denied", details={"reason": "stale_totp"})
+        self.reply(403, {"error": "fresh TOTP required; sign in again with a new code"})
+        return False
+
     def do_GET(self):
         if self.path == "/":
             self.send_response(200)
@@ -380,9 +443,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/totp":
             data = self.body() or {}
             code = str(data.get("code", ""))
-            if not re.fullmatch(r"\d{6}", code) or not load_v3().totp_valid(cfg()["totp_secret"], code):
+            step = load_v3().totp_step(cfg()["totp_secret"], code) if re.fullmatch(r"\d{6}", code) else None
+            if step is None:
                 audit(telegram_user, "web_totp", result="denied")
                 self.reply(403, {"error": "invalid TOTP"})
+                return
+            if not consume_initdata(self.headers.get("X-Telegram-InitData", ""), telegram_user) or not consume_totp_step(telegram_user, step):
+                audit(telegram_user, "web_totp", result="denied", details={"reason": "replay"})
+                self.reply(403, {"error": "authentication replay rejected"})
                 return
             session_id = new_session(telegram_user)
             audit(telegram_user, "web_totp", result="ok")
@@ -393,6 +461,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not session_user or session_user != telegram_user:
             self.reply(403, {"error": "TOTP required"})
+            return
+        requires_step_up = self.path in {"/api/backups", "/api/firewall/request", "/api/firewall/confirm", "/api/firewall/keep", "/api/firewall/rollback", "/api/actions/ssh", "/api/actions/power"} or bool(re.fullmatch(r"/api/actions/confirm/\d+", self.path))
+        if requires_step_up and not self.require_recent_totp(telegram_user):
             return
         if self.path == "/api/ai/chat":
             data = self.body(limit=32768) or {}

@@ -189,21 +189,26 @@ def auth_config():
     }
 
 
-def totp_valid(secret, code, now=None):
+def totp_step(secret, code, now=None):
+    """Return the matched 30-second TOTP step without exposing the secret."""
     if not re.fullmatch(r"\d{6}", code):
-        return False
+        return None
     try:
         key = base64.b32decode(secret + "=" * (-len(secret) % 8), casefold=True)
     except (ValueError, base64.binascii.Error):
-        return False
+        return None
     current_step = int((time.time() if now is None else now) // 30)
     for step in (current_step - 1, current_step, current_step + 1):
         digest = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest()
         offset = digest[-1] & 0x0F
         candidate = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1_000_000
         if secrets.compare_digest(f"{candidate:06d}", code):
-            return True
-    return False
+            return step
+    return None
+
+
+def totp_valid(secret, code, now=None):
+    return totp_step(secret, code, now) is not None
 
 
 def auth_state():
@@ -224,6 +229,13 @@ def authenticated(user_id):
     return session.get("expires_at", 0) > time.time()
 
 
+def recent_totp(user_id, max_age=60, now=None):
+    """Require a recent TOTP verification before a destructive Telegram action."""
+    current = time.time() if now is None else now
+    session = auth_state().get("sessions", {}).get(str(user_id), {})
+    return authenticated(user_id) and current - float(session.get("totp_at", 0)) <= max_age
+
+
 def login(user_id, code):
     config = auth_config()
     user_id = str(user_id)
@@ -233,14 +245,20 @@ def login(user_id, code):
         return False, "Access denied."
     if failures.get("locked_until", 0) > time.time():
         return False, "Too many failed attempts. Try again later."
-    if not totp_valid(config["totp_secret"], code):
+    step = totp_step(config["totp_secret"], code)
+    if step is None:
         failures["count"] = failures.get("count", 0) + 1
         if failures["count"] >= config["max_failures"]:
             failures = {"count": 0, "locked_until": time.time() + config["lockout_seconds"]}
         state.setdefault("failures", {})[user_id] = failures
         save_auth_state(state)
         return False, "Invalid authentication code."
-    state.setdefault("sessions", {})[user_id] = {"expires_at": time.time() + config["session_seconds"]}
+    accepted_steps = state.setdefault("last_totp_steps", {})
+    if accepted_steps.get(user_id) == step:
+        return False, "Authentication code was already used. Wait for a new code."
+    accepted_steps[user_id] = step
+    now = time.time()
+    state.setdefault("sessions", {})[user_id] = {"expires_at": now + config["session_seconds"], "totp_at": now}
     state.setdefault("failures", {}).pop(user_id, None)
     save_auth_state(state)
     return True, f"Access granted for {config['session_seconds'] // 60} minutes."
@@ -1085,6 +1103,9 @@ def process_authenticated_command(text):
             rows.append(f"{icons[info['status']]} {name}: <b>{info['status']}</b>\n{checks}")
         rows.append("ℹ️ ICMP — диагностический сигнал. DOWN означает, что повторные TCP/HTTP проверки не подтвердили доступность.")
         send("\n".join(rows)); return
+    destructive = cmd == "/reboot" or cmd == "/shutdown" or cmd.startswith("/reboot confirm ") or cmd.startswith("/shutdown confirm ") or bool(re.fullmatch(r"/killssh\s+\d+", cmd)) or cmd.startswith("/killssh confirm ")
+    if destructive and not recent_totp(CURRENT_USER_ID.get()):
+        send("🔐 Для этого действия нужен свежий TOTP. Выполни /login с новым кодом и повтори действие в течение 60 секунд."); return
     if cmd == "/reboot": send("♻️ " + reboot()); return
     if cmd == "/shutdown": send("⛔ " + shutdown()); return
     if cmd.startswith("/reboot confirm ") or cmd.startswith("/shutdown confirm "):
