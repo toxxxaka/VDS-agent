@@ -122,3 +122,16 @@ class OutboxTests(unittest.TestCase):
         row = rows("SELECT * FROM notification_outbox WHERE id=?", (item["id"],), self.db)[0]
         self.assertEqual(row["status"], "queued")
         self.assertEqual(row["attempts"], 1)
+
+class BaselineTests(unittest.TestCase):
+    def test_hourly_median_mad_stays_shadow_only(self):
+        from v4 import baseline
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "monitoring.db"
+            # 24 samples for the same UTC hour, then an unusually high one.
+            base = 1_700_000_000 - (1_700_000_000 % 86400) + 12 * 3600
+            for day in range(24):
+                metrics.record({"time": base - day * 86400, "cpu": 10, "load1": 1, "mem_used": 1, "mem_cached": 0, "mem_available": 1, "disk_used": 1, "disk_total": 2, "rx": day, "tx": day, "read": day, "write": day}, path=db)
+            result = baseline.shadow("cpu", 99, now=base, path=db)
+            self.assertTrue(result["ready"])
+            self.assertTrue(result["would_alert"])

@@ -128,6 +128,12 @@ def sample(state, cfg):
     recorder = _flight()
     if recorder:
         recorder.append({"time": time.time(), "cpu_percent": cpu, "load1": load1, "load5": load5, "load15": load15, "cores": cores})
+    if load_settings().features.adaptive_baseline:
+        from v4.baseline import shadow
+        candidate = shadow("cpu", cpu)
+        state["baseline_shadow"] = candidate
+        if candidate["would_alert"]:
+            LOG.info("Adaptive CPU baseline would alert; static policy remains authoritative")
     notify(state, "CPU", cpu >= cfg["cpu_percent"], f"⚠️ Высокая загрузка CPU\n{context}", cfg)
     notify(state, "LA 1 мин", load1 > cfg["load_one"], f"⚠️ Высокий Load Average\n{context}", cfg)
     notify(state, "LA на ядро", per_core > cfg["per_cpu_load"], f"⚠️ Высокая нагрузка на ядро\n{context}", cfg)

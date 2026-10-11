@@ -75,7 +75,8 @@ PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli check-config
 ```
 
 The Flight Recorder, adaptive baseline, Telegram outbox and external heartbeat
-are disabled by default. Enabling a flag is a reviewed configuration change,
+are disabled by default. The adaptive baseline runs in shadow mode only; it never
+changes the static alert policy without a later reviewed implementation. Enabling a flag is a reviewed configuration change,
 not a deployment prerequisite. The recorder keeps at most 512 KiB of process
 memory and writes evidence to SQLite only when an incident opens.
 

@@ -18,4 +18,4 @@
 | Product stage 0 | ready for review | 2026-10-12 | Scope, feature-flag and resource-budget documents recorded. |
 | Product stage 1 | ready for review | 2026-10-12 | Stdlib typed non-secret config, package metadata and `vds-agent check-config`; `v3.py` remains compatible entry point. |
 | Product stage 2 | ready for review | 2026-10-12 | SQLite durable task lifecycle, cancellation/idempotency/retry/recovery plus opt-in outbox implemented in source. |
-| Product stage 3 | ready for review | 2026-10-12 | Rollups, PSI/inodes, Flight Recorder behind a flag, alert state machine and DNS/HTTP/TLS availability extensions implemented in source. |
+| Product stage 3 | ready for review | 2026-10-12 | Rollups, PSI/inodes, Flight Recorder behind a flag, alert state machine, shadow-only baseline and DNS/HTTP/TLS availability extensions implemented in source. |
