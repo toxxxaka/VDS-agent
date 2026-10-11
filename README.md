@@ -194,6 +194,7 @@ resource-intensive additions are disabled by default. Validate a prospective
 configuration with `python3 -m v4.cli check-config` before deployment.
 
 Diagnostic work is stored in SQLite with idempotency keys, lifecycle events,
-cancellation requests and bounded retry. Only read-only diagnostic tasks are
+cancellation requests and bounded retry. The optional Telegram outbox persists
+notifications across temporary transport failures and deduplicates explicit keys. Only read-only diagnostic tasks are
 eligible for automatic recovery after a worker restart; backup and controlled
 operations are recorded as failed rather than replayed.

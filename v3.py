@@ -17,6 +17,7 @@ import tempfile
 import base64
 import hashlib
 import hmac
+import uuid
 from v4 import availability
 import struct
 from contextvars import ContextVar
@@ -154,21 +155,52 @@ def _telegram_chunks(text, limit=3900):
     yield value
 
 
-def send(text, chat_id=None, reply_markup=None):
+def _telegram_payloads(text, chat_id=None, reply_markup=None):
     chunks = list(_telegram_chunks(text))
-    delivered = True
+    payloads = []
     for index, chunk in enumerate(chunks):
-        payload = {
-            "chat_id": chat_id or REPLY_CHAT_ID.get() or CHAT_ID,
-            "text": chunk,
-            "disable_web_page_preview": True,
-            "parse_mode": "HTML",
-        }
+        payload = {"chat_id": chat_id or REPLY_CHAT_ID.get() or CHAT_ID, "text": chunk, "disable_web_page_preview": True, "parse_mode": "HTML"}
         if reply_markup is not None and index == len(chunks) - 1:
             payload["reply_markup"] = reply_markup
+        payloads.append(payload)
+    return payloads
+
+
+def _outbox_enabled():
+    try:
+        from v4.config import load
+        return load().features.telegram_outbox
+    except Exception:
+        return False
+
+
+def drain_outbox(limit=10):
+    """Best-effort drain; unavailable transport leaves rows queued for retry."""
+    if not _outbox_enabled():
+        return 0
+    from v4.outbox import dispatch_one
+    delivered = 0
+    for _ in range(max(1, min(int(limit), 50))):
+        if not dispatch_one(lambda channel, payload: channel == "telegram" and bool((telegram("sendMessage", payload) or {}).get("ok"))):
+            break
+        delivered += 1
+    return delivered
+
+
+def send(text, chat_id=None, reply_markup=None):
+    payloads = _telegram_payloads(text, chat_id, reply_markup)
+    if _outbox_enabled():
+        from v4.outbox import enqueue
+        for payload in payloads:
+            enqueue("telegram", payload, "telegram:" + str(uuid.uuid4()))
+        drain_outbox()
+        LOG.info("Telegram message queued through persistent outbox: chunks=%d", len(payloads))
+        return True
+    delivered = True
+    for payload in payloads:
         response = telegram("sendMessage", payload)
         delivered = bool(response and response.get("ok")) and delivered
-    LOG.info("Telegram message delivery: %s chunks=%d", delivered, len(chunks))
+    LOG.info("Telegram message delivery: %s chunks=%d", delivered, len(payloads))
     return delivered
 
 
@@ -1158,6 +1190,7 @@ def process_command(text, user_id, chat_id, message_id):
 
 def poll(last_update):
 
+    drain_outbox(limit=10)
     data = telegram(
         "getUpdates",
         {"timeout": 50, "offset": last_update + 1},

@@ -75,7 +75,8 @@ PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli check-config
 ```
 
 The Flight Recorder, adaptive baseline, Telegram outbox and external heartbeat
-are disabled by default. The adaptive baseline runs in shadow mode only; it never
+are disabled by default. When `telegram_outbox` is enabled, the bot queues messages
+in SQLite and drains retries with exponential backoff during polling. The adaptive baseline runs in shadow mode only; it never
 changes the static alert policy without a later reviewed implementation. Enabling a flag is a reviewed configuration change,
 not a deployment prerequisite. The recorder keeps at most 512 KiB of process
 memory and writes evidence to SQLite only when an incident opens.

@@ -135,3 +135,16 @@ class BaselineTests(unittest.TestCase):
             result = baseline.shadow("cpu", 99, now=base, path=db)
             self.assertTrue(result["ready"])
             self.assertTrue(result["would_alert"])
+
+class TelegramOutboxIntegrationTests(unittest.TestCase):
+    def test_disabled_outbox_keeps_direct_delivery(self):
+        import v3
+        with patch.object(v3, "_outbox_enabled", return_value=False), patch.object(v3, "telegram", return_value={"ok": True}) as send:
+            self.assertTrue(v3.send("hello", chat_id="42"))
+        send.assert_called_once()
+
+    def test_enabled_outbox_queues_without_exposing_transport(self):
+        import v3
+        with patch.object(v3, "_outbox_enabled", return_value=True), patch("v4.outbox.enqueue") as enqueue, patch.object(v3, "drain_outbox", return_value=0):
+            self.assertTrue(v3.send("hello", chat_id="42"))
+        enqueue.assert_called_once()
