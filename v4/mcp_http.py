@@ -50,8 +50,8 @@ def build_mcp():
     mcp = FastMCP(
         "vds-agent",
         instructions=(
-            "Private VDS diagnostics and controlled operations. Diagnose before recommending action. "
-            "Administrative actions require an explicit two-step confirmation from the operator."
+            "Private VDS read-only diagnostics. Diagnose before recommending action. "
+            "MCP cannot initiate or execute administrative actions."
         ),
         host="127.0.0.1",
         port=int(os.environ.get("MONITORINGBOT_MCP_PORT", "8793")),
@@ -109,13 +109,6 @@ def build_mcp():
         """Read VDS-Agent self-monitoring health."""
         return _call("monitoring_health")
 
-    @mcp.tool()
-    def admin_action(action: str, confirmation_id: int | None = None) -> dict:
-        """Prepare then confirm one allow-listed high-risk administrative action."""
-        arguments = {"action": action}
-        if confirmation_id is not None:
-            arguments["confirmation_id"] = confirmation_id
-        return _call("admin_action", arguments)
 
     return mcp
 

@@ -5,6 +5,8 @@ subprocess calls, output is capped and potentially secret-looking values are red
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -28,10 +30,11 @@ MAX_OUTPUT = 12_000
 MAX_LOG_LINES = 100
 PENDING_TTL = 90
 UNIT_RE = re.compile(r"[A-Za-z0-9@_.-]{1,120}\.service")
-LOG_UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "monitorbot-infrad.service", "monitorbot-backupd.service", "nginx.service", "ssh.service", "docker.service"}
+LOG_UNITS = {"monitoringbot.service", "monitorbot-web.service", "monitorbot-health.service", "monitorbot-oom.service", "monitorbot-snapshot.service", "monitorbot-infrad.service", "monitorbot-backupd.service", "monitorbot-mcp.service", "nginx.service", "ssh.service", "docker.service", "fail2ban.service"}
 DIAGNOSTIC_HELPER = Path("/usr/local/libexec/monitoringbot-diagnostic-helper")
 HOST_RE = re.compile(r"[A-Za-z0-9.-]{1,253}")
-SECRET_RE = re.compile(r"(?i)(?:authorization|bearer|token|password|secret|api[_-]?key)\\s*[:=]\\s*[^\\s,;]+")
+SECRET_RE = re.compile(r"(?i)(?:authorization|bearer|token|password|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+")
+ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 
 
 class ToolError(ValueError):
@@ -40,6 +43,13 @@ class ToolError(ValueError):
 
 def _redact(value: str) -> str:
     return SECRET_RE.sub("[redacted]", value)
+
+
+def sanitize_untrusted(value: Any, limit: int = MAX_OUTPUT) -> str:
+    """Bound terminal, journal and process text before it reaches a user or model."""
+    text = ANSI_RE.sub("", str(value))
+    text = "".join(char for char in text if char in "\n\t" or ord(char) >= 32)
+    return _redact(text[-max(0, limit):])
 
 
 def _run(argv: list[str], timeout: int = 8, limit: int = MAX_OUTPUT) -> dict[str, Any]:
@@ -57,8 +67,8 @@ def _run(argv: list[str], timeout: int = 8, limit: int = MAX_OUTPUT) -> dict[str
         return {"ok": False, "error": "command timed out"}
     except OSError as error:
         return {"ok": False, "error": f"command unavailable: {type(error).__name__}"}
-    text = _redact(result.stdout[-limit:])
-    return {"ok": result.returncode == 0, "exit_code": result.returncode, "output": text}
+    text = sanitize_untrusted(result.stdout, limit)
+    return {"ok": result.returncode == 0, "exit_code": result.returncode, "output": text, "untrusted": True}
 
 
 def _unit(value: Any) -> str:
@@ -120,7 +130,7 @@ def _process_items(requested_pid: int | None = None, sample_seconds: float = 0.5
                     "memory_percent": round(process.memory_percent(), 2),
                     "rss_bytes": memory.rss,
                     "rss_mib": round(memory.rss / (1024 * 1024), 1),
-                    "cmd": _redact(command)[:240],
+                    "cmd": sanitize_untrusted(command, 240),
                     "elapsed_seconds": max(0, int(now - process.create_time())),
                     "threads": process.num_threads(),
                     "io_read_bytes": getattr(io, "read_bytes", None),
@@ -313,30 +323,42 @@ ADMIN_ACTIONS = {
 }
 
 
+def _confirmation_digest(actor: str, action: str) -> str:
+    """Bind a one-time approval to its caller and exact allow-listed action."""
+    payload = json.dumps({"actor": actor, "action": action}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _create_pending(actor: str, action: str) -> int:
-    token = secrets.token_urlsafe(18)
+    digest = _confirmation_digest(actor, action)
     with connect() as connection:
         cursor = connection.execute(
             "INSERT INTO pending_actions(kind,user_id,target,expires_at,data) VALUES(?,?,?,?,?)",
-            ("agent_admin", actor, action, time.time() + PENDING_TTL, json.dumps({"token": token})),
+            ("agent_admin", actor, action, time.time() + PENDING_TTL, json.dumps({"digest": digest})),
         )
         return cursor.lastrowid
 
 
-def _consume_pending(actor: str, confirmation_id: Any) -> str | None:
+def _consume_pending(actor: str, action: str, confirmation_id: Any) -> bool:
     try:
         confirmation_id = int(confirmation_id)
     except (TypeError, ValueError):
-        return None
+        return False
     with connect() as connection:
         row = connection.execute(
-            "SELECT target FROM pending_actions WHERE id=? AND kind='agent_admin' AND user_id=? AND expires_at>=?",
+            "SELECT target,data FROM pending_actions WHERE id=? AND kind='agent_admin' AND user_id=? AND expires_at>=?",
             (confirmation_id, actor, time.time()),
         ).fetchone()
-        if not row:
-            return None
+        if not row or row["target"] != action:
+            return False
+        try:
+            stored = json.loads(row["data"]).get("digest", "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if not isinstance(stored, str) or not hmac.compare_digest(stored, _confirmation_digest(actor, action)):
+            return False
         connection.execute("DELETE FROM pending_actions WHERE id=?", (confirmation_id,))
-        return row["target"]
+        return True
 
 
 def admin_action(arguments: dict[str, Any] | None = None, actor: str = "mcp") -> dict[str, Any]:
@@ -347,6 +369,9 @@ def admin_action(arguments: dict[str, Any] | None = None, actor: str = "mcp") ->
     absent until its separate deployment step has been reviewed and installed.
     """
     arguments = arguments or {}
+    if actor.startswith("mcp"):
+        audit(actor, "agent_admin", "", "denied", {"reason": "mcp_read_only"})
+        raise ToolError("MCP is read-only; administrative actions require Telegram or WebUI confirmation")
     action = arguments.get("action")
     if action not in ADMIN_ACTIONS:
         raise ToolError("unsupported administrative action")
@@ -355,8 +380,7 @@ def admin_action(arguments: dict[str, Any] | None = None, actor: str = "mcp") ->
         pending_id = _create_pending(actor, action)
         audit(actor, "agent_admin_request", action, "pending", {"confirmation_id": pending_id})
         return {"ok": False, "confirmation_required": True, "confirmation_id": pending_id, "expires_in_seconds": PENDING_TTL, "action": action}
-    approved = _consume_pending(actor, confirmation_id)
-    if approved != action:
+    if not _consume_pending(actor, action, confirmation_id):
         raise ToolError("confirmation is invalid, expired or belongs to a different action")
     helper = Path("/usr/local/libexec/monitoringbot-admin-helper")
     if not helper.is_file():
