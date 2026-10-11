@@ -11,11 +11,11 @@ It is intended for personal infrastructure. It is not a public shell, a multi-te
 
 ### Monitoring and incidents
 
-- Tracks CPU, load average, RAM, cache, swap, filesystem capacity, network throughput, packet rates, TCP states, SYN-RECV and disk I/O.
+- Tracks CPU, load average, RAM, cache, swap, filesystem capacity and inodes, Linux PSI pressure, network throughput, packet rates, TCP states, SYN-RECV and disk I/O.
 - Detects OOM-killer events and external SSH logins.
-- Stores local SQLite telemetry for 30 days and exposes 1h, 6h, 24h, 7d and 30d charts.
+- Stores local SQLite telemetry for 30 days and exposes 1h, 6h, 24h, 7d and 30d charts. Raw points are retained for short ranges; bounded 5-minute and hourly rollups serve long ranges without hiding peaks or sending excessive data to the browser.
 - Opens one incident per active condition, records later observations, then closes it automatically after recovery. Recovery timestamps and diagnostic snapshots remain available.
-- Sends alert and recovery notifications without allowing a Telegram failure to stop monitoring.
+- Can persist Telegram deliveries in a bounded SQLite outbox, so a temporary Telegram failure cannot stop monitoring or silently discard an alert. This feature is disabled by default.
 - Separates ICMP diagnostics from availability: repeated TCP/HTTP checks determine `UP`, `DEGRADED`, `DOWN` or `UNKNOWN`; an ICMP timeout alone never means a server is down.
 
 ### Telegram bot and AI diagnostics
@@ -74,6 +74,22 @@ ChatGPT MCP ──────────────────────�
 ```
 
 Metric samples and incident snapshots are separate data sets: inexpensive periodic telemetry is retained for charts, while snapshots are created only around incidents.
+
+### Reliability controls
+
+The application uses SQLite WAL for telemetry, incident history, audit data and bounded background work. Diagnostic tasks have explicit lifecycle events, idempotency keys, cancellation requests and conservative retry rules: only read-only diagnostics may be recovered after a worker restart. Controlled operations and backups are never replayed automatically.
+
+Optional controls in `config/monitoringbot.json` keep new behaviour reviewable:
+
+- **Flight Recorder** retains a small in-memory window of recent telemetry and writes it only when an incident is opened.
+- **Adaptive baseline** calculates an hourly local baseline in shadow mode. It records potential anomalies but never changes alert delivery or thresholds automatically.
+- **Telegram outbox** retries failed notification delivery with bounded backoff and deduplication.
+
+All three are disabled by default. Validate a prospective non-secret configuration before deployment:
+
+```bash
+python3 -m v4.cli check-config
+```
 
 ## Security model
 
@@ -185,16 +201,3 @@ GitHub Actions installs dependencies, compiles Python, runs the unit suite, chec
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-### Optional resilience and telemetry controls
-
-The non-secret `config/monitoringbot.json.example` template controls bounded
-retention, rollups, database soft-limit reporting and feature flags. All
-resource-intensive additions are disabled by default. Validate a prospective
-configuration with `python3 -m v4.cli check-config` before deployment.
-
-Diagnostic work is stored in SQLite with idempotency keys, lifecycle events,
-cancellation requests and bounded retry. The optional Telegram outbox persists
-notifications across temporary transport failures and deduplicates explicit keys. Only read-only diagnostic tasks are
-eligible for automatic recovery after a worker restart; backup and controlled
-operations are recorded as failed rather than replayed.
