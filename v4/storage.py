@@ -79,6 +79,9 @@ def connect(path: Path = DB) -> sqlite3.Connection:
         if field not in run_fields:
             connection.execute(f"ALTER TABLE command_runs ADD COLUMN {field} {declaration}")
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_command_runs_idempotency ON command_runs(user_id,command,idempotency_key) WHERE idempotency_key IS NOT NULL")
+    # v3 was a short-lived rollout label for the same corrected one-second
+    # telemetry format. Fold it into v2 so existing chart history stays visible.
+    connection.execute("UPDATE metric_samples SET sample_version=2 WHERE sample_version=3")
     connection.execute("UPDATE incidents SET status='closed',closed_at=COALESCE(closed_at,recovered_at) WHERE status='recovered'")
     connection.execute("DELETE FROM pending_actions WHERE expires_at < ?", (time.time(),))
     _private_path(path)

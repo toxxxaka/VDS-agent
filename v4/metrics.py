@@ -12,7 +12,7 @@ from .config import load as load_settings
 from .storage import DB, connect, rows
 
 RANGES = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800, "30d": 2592000}
-SAMPLE_VERSION = 3
+SAMPLE_VERSION = 2
 CPU_INTERVAL_SECONDS = 1.0
 ROLLUP_5M = 300
 ROLLUP_1H = 3600
