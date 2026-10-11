@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS incident_events(id INTEGER PRIMARY KEY,incident_id IN
 CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY,time REAL NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY,time REAL NOT NULL,user_id TEXT,action TEXT NOT NULL,target TEXT,result TEXT NOT NULL,details TEXT);
 CREATE TABLE IF NOT EXISTS pending_actions(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,user_id TEXT,target TEXT,expires_at REAL NOT NULL,data TEXT);
+CREATE TABLE IF NOT EXISTS web_auth_replays(digest TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS web_totp_steps(user_id TEXT PRIMARY KEY,time_step INTEGER NOT NULL,accepted_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS metric_samples(id INTEGER PRIMARY KEY,time REAL NOT NULL,cpu REAL NOT NULL,load1 REAL NOT NULL,mem_used INTEGER NOT NULL,mem_cached INTEGER NOT NULL,mem_available INTEGER NOT NULL,disk_used INTEGER NOT NULL,disk_total INTEGER NOT NULL,rx INTEGER NOT NULL,tx INTEGER NOT NULL,read_bytes INTEGER NOT NULL,write_bytes INTEGER NOT NULL,sample_version INTEGER NOT NULL DEFAULT 2);
 CREATE INDEX IF NOT EXISTS ix_metric_samples_time ON metric_samples(time);
 CREATE TABLE IF NOT EXISTS command_runs(id TEXT PRIMARY KEY,command TEXT NOT NULL,title TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed','timeout','cancelled')),user_id TEXT NOT NULL,started_at REAL NOT NULL,finished_at REAL,duration_ms INTEGER,exit_code INTEGER,stdout TEXT NOT NULL DEFAULT '',stderr TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '{}');
@@ -25,6 +27,7 @@ CREATE INDEX IF NOT EXISTS ix_events_incident_time ON incident_events(incident_i
 CREATE INDEX IF NOT EXISTS ix_snapshots_time ON snapshots(time DESC);
 CREATE INDEX IF NOT EXISTS ix_audit_time ON audit_log(time DESC);
 CREATE INDEX IF NOT EXISTS ix_pending_expiry ON pending_actions(expires_at);
+CREATE INDEX IF NOT EXISTS ix_web_auth_replays_expiry ON web_auth_replays(expires_at);
 CREATE INDEX IF NOT EXISTS ix_command_runs_started ON command_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS ix_command_runs_status ON command_runs(status,started_at DESC);
 '''
