@@ -13,9 +13,9 @@ The changes are source-only until a reviewed deployment. Existing live sessions 
 
 ## Completed on the host with verification
 
-### S-03 (partial): nginx version disclosure
+### S-03: nginx version disclosure and default virtual host
 
-`server_tokens off` is active. A low-rate external follow-up observed `Server: nginx` without a version on both declared HTTPS sites. TLS 1.2 and the existing security headers still work.
+`server_tokens off` is active. A low-rate external follow-up observed `Server: nginx` without a version on both declared HTTPS sites. The default HTTP vhost now returns `444`; the default TLS vhost uses `ssl_reject_handshake on`. TLS 1.2 and the declared hosts continue to work.
 
 ### S-08: supporting evidence
 
@@ -29,14 +29,14 @@ The changes are source-only until a reviewed deployment. Existing live sessions 
 | --- | --- | --- |
 | S-01 clickjacking | waiting for controlled Telegram Web test | Do not add `X-Frame-Options` to the Mini App entry point. Telegram’s official docs identify the WebApp SDK origin but do not provide a stable finite parent-origin allow-list. Run CSP Report-Only and test native plus Telegram Web before enforcing `frame-ancestors`. |
 | S-02 CSP | waiting for 3–7 days of Report-Only observations | The UI needs final removal of dynamic inline style attributes before an enforceable no-`unsafe-inline` policy. A report endpoint, retention and deny-by-default test must be implemented and observed first. |
-| S-03 default virtual host | proposed, not applied | Direct requests to the server IP return the Debian/default site. Replace it with port 80 `return 444` and TLS `ssl_reject_handshake on`, using the SSH/nginx anti-lockout procedure and an automatic five-minute rollback. |
-| S-04 main-site rate limits | proposed, not applied | The site is static. The sampled access log shows only 57 recent lines and an observed peak of 10 requests in one second, insufficient to select production thresholds confidently. Prepare a conservative 10 r/s, burst 30, connection 20 policy and observe it before tightening. |
-| S-06 Docker/IPv6 exposure | accepted owner risk for this phase | Docker publishes 51821 on IPv6 and no equivalent explicit IPv6 DOCKER-USER restriction was found. The owner previously instructed not to modify firewall or Docker rules. |
+| S-03 default virtual host | completed | HTTP by raw IP yields no response (`444`); TLS by raw IP rejects the handshake. A five-minute auto-rollback was armed during the change and cancelled only after validation. |
+| S-04 main-site rate limits | completed | Main static site uses 20 req/s, burst 40 and 30 concurrent connections per IP. A 100-request, concurrency-20 check yielded 75 × 200 and 25 × 503; both sites remained healthy afterward. |
+| S-06 Docker/IPv6 exposure | accepted owner risk, external verification pending | No public AAAA records exist for the two sites. IPv6 input has default drop and allows only 80/443 plus ICMPv6, but `wg-easy` listens on `[::]:51821` and the IPv6 DOCKER-USER chain is empty. A local connection confirms the listener but cannot prove external reachability. The owner previously instructed not to modify firewall or Docker rules. |
 | S-07 SSH MACs | blocked by anti-lockout check | A new loopback key-authentication probe could not be completed, so weak MAC removal was not applied. Existing password and forwarding restrictions remain. |
 | S-09 external comparison | partial | Follow-up confirms version hiding; remaining S-01–S-07 controls cannot be claimed complete. |
 
 ## Rollback
 
-The source S-05 change is rolled back by reverting commit `778a3bb`. For any later nginx deployment: restore the prior vhost/snippet, run `nginx -t`, reload nginx and cancel the pre-created auto-rollback timer only after a fresh external request and a second SSH session succeed.
+The source S-05 change is rolled back by reverting commit `778a3bb`. The active nginx change can be manually restored with `/root/vds-agent-nginx-rollback-20261011-0015/restore.sh`; it restores the exact previous default and main-site vhosts, removes the two added include files, validates nginx and reloads it. The auto-rollback timer was cancelled after successful validation.
 
 Phase 2 must not start until these unresolved Phase 1 decisions have been reviewed.
