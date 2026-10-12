@@ -514,17 +514,19 @@ class Handler(BaseHTTPRequestHandler):
             payload = intelligence.incident_evidence(incident_id)
             self.reply(200, payload) if payload else self.reply(404, {"error": "incident not found"})
             return
+        session = web_session(self.headers.get("Cookie", "")) or {}
+        runbook_config = cfg() | {"_session_recovery_role": session.get("recovery_role")}
         if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/dry-run", self.path):
-            try: self.reply(200, runbooks.dry_run(self.path.split("/")[-2], telegram_user, cfg()))
+            try: self.reply(200, runbooks.dry_run(self.path.split("/")[-2], telegram_user, runbook_config))
             except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
             return
         if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/request", self.path):
-            try: self.reply(200, runbooks.request(self.path.split("/")[-2], telegram_user, cfg()))
+            try: self.reply(200, runbooks.request(self.path.split("/")[-2], telegram_user, runbook_config))
             except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
             return
         if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/decision", self.path):
             data = self.body() or {}
-            try: self.reply(200, runbooks.decide(str(data.get("run_id", "")), telegram_user, bool(data.get("approve")), cfg()))
+            try: self.reply(200, runbooks.decide(str(data.get("run_id", "")), telegram_user, bool(data.get("approve")), runbook_config))
             except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
             return
         if self.path == "/api/console":
