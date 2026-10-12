@@ -25,6 +25,7 @@ from . import external_tools
 from . import ai
 from . import self_monitoring
 from . import console
+from . import intelligence, runbooks
 from .tasks import TASKS, get_run, list_runs, start_run, recover_pending, cancel_run
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -376,6 +377,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/self-monitoring":
             self.reply(200, self_monitoring.report())
             return
+        if self.path == "/api/patch-status":
+            self.reply(200, intelligence.patch_status())
+            return
+        if self.path == "/api/runbooks":
+            self.reply(200, {"runbooks": runbooks.list_runbooks(), "runs": runbooks.runs()})
+            return
         if urllib.parse.urlparse(self.path).path == "/api/metrics":
             params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             period = params.get("range", params.get("period", ["1h"]))[0]
@@ -414,6 +421,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if re.fullmatch(r"/api/incidents/\d+", self.path):
             payload = incident_payload(int(self.path.rsplit("/", 1)[1]))
+            self.reply(200, payload) if payload else self.reply(404, {"error": "incident not found"})
+            return
+        if re.fullmatch(r"/api/incidents/\d+/forensics", self.path):
+            payload = intelligence.forensics_export(int(self.path.split("/")[-2]))
             self.reply(200, payload) if payload else self.reply(404, {"error": "incident not found"})
             return
         if self.path == "/api/audit":
@@ -462,7 +473,7 @@ class Handler(BaseHTTPRequestHandler):
         if not session_user or session_user != telegram_user:
             self.reply(403, {"error": "TOTP required"})
             return
-        requires_step_up = self.path in {"/api/backups", "/api/firewall/request", "/api/firewall/confirm", "/api/firewall/keep", "/api/firewall/rollback", "/api/actions/ssh", "/api/actions/power"} or bool(re.fullmatch(r"/api/actions/confirm/\d+", self.path))
+        requires_step_up = self.path in {"/api/backups", "/api/firewall/request", "/api/firewall/confirm", "/api/firewall/keep", "/api/firewall/rollback", "/api/actions/ssh", "/api/actions/power"} or bool(re.fullmatch(r"/api/actions/confirm/\d+", self.path)) or bool(re.fullmatch(r"/api/runbooks/[a-z0-9-]+/(request|decision)", self.path))
         if requires_step_up and not self.require_recent_totp(telegram_user):
             return
         if self.path == "/api/ai/chat":
@@ -497,6 +508,24 @@ class Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 audit(telegram_user, "ai_chat", "timeweb-agent", "failed")
+            return
+        if re.fullmatch(r"/api/incidents/\d+/investigate", self.path):
+            incident_id = int(self.path.split("/")[-2])
+            payload = intelligence.incident_evidence(incident_id)
+            self.reply(200, payload) if payload else self.reply(404, {"error": "incident not found"})
+            return
+        if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/dry-run", self.path):
+            try: self.reply(200, runbooks.dry_run(self.path.split("/")[-2], telegram_user, cfg()))
+            except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
+            return
+        if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/request", self.path):
+            try: self.reply(200, runbooks.request(self.path.split("/")[-2], telegram_user, cfg()))
+            except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
+            return
+        if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/decision", self.path):
+            data = self.body() or {}
+            try: self.reply(200, runbooks.decide(str(data.get("run_id", "")), telegram_user, bool(data.get("approve")), cfg()))
+            except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
             return
         if self.path == "/api/console":
             data = self.body(limit=1024) or {}

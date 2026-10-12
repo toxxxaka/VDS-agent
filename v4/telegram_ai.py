@@ -30,6 +30,8 @@ AI_HELP = """<b>🤖 AI-диагностика</b>
 <code>/ai services</code> — основные службы
 <code>/ai logs</code> — последние логи VDS-Agent
 <code>/ai incidents</code> — активные incidents
+<code>/ai incident 42</code> — evidence и timeline incident
+<code>/ai patch</code> — security updates и reboot status
 <code>/ai explain</code> — объяснить последний контекст
 
 Можно писать обычным языком: <i>/ai Почему сервер тормозит?</i>
@@ -60,7 +62,7 @@ def _query_kind(text: str) -> str:
     lowered = text.strip().lower()
     first = lowered.split(maxsplit=1)[0] if lowered else ""
     aliases = {"process": "processes", "proc": "processes", "mem": "memory", "ram": "memory", "io": "disk", "service": "services", "log": "logs", "incident": "incidents", "сеть": "network", "память": "memory", "процессы": "processes", "нагрузка": "cpu"}
-    if first in {"help", "processes", "cpu", "memory", "disk", "network", "services", "logs", "incidents", "explain"}:
+    if first in {"help", "processes", "cpu", "memory", "disk", "network", "services", "logs", "incidents", "incident", "patch", "explain"}:
         return first
     return aliases.get(first, "natural")
 
@@ -76,8 +78,12 @@ def _plan(text: str) -> list[tuple[str, dict[str, Any]]]:
         "services": [("service_status", {})],
         "logs": [("service_logs", {"unit": "monitoringbot.service", "lines": 12, "minutes": 120})],
         "incidents": [("incidents_query", {"status": "active"})],
+        "patch": [("patch_status", {})],
         "explain": [("server_status", {}), ("incidents_query", {"status": "active"})],
     }
+    if kind == "incident":
+        match = re.search(r"\b(\d{1,9})\b", text)
+        return [("incident_investigate", {"incident_id": int(match.group(1))})] if match else [("incidents_query", {"status": "active"})]
     if kind in fixed:
         return fixed[kind]
     query = text.lower()

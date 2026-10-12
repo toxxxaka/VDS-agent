@@ -1,0 +1,19 @@
+id: suspicious-ssh
+title: Suspicious SSH login investigation
+description: Review recorded SSH activity and current listener state without terminating or banning anyone.
+conditions:
+  - An operator reports an unfamiliar SSH login.
+diagnostics:
+  - tool: security_detect
+    arguments:
+      mode: listeners
+  - tool: monitoring_health
+    arguments: {}
+  - tool: incidents_query
+    arguments:
+      status: active
+cooldown_seconds: 300
+max_attempts: 3
+rollback: No changes are made by this diagnostic-only runbook.
+post_check:
+  - monitoring_health

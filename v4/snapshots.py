@@ -56,18 +56,22 @@ def store(kind, data):
 
 
 def capture(kind, evidence=None):
+    """Persist an incident-only deep evidence bundle.
+
+    Intelligence collection is bounded and best-effort: failure to read a
+    privileged or optional source must never prevent incident creation.
+    """
     data = overview()
-    if evidence is not None:
-        data["flight_recorder"] = evidence
     data["kind"] = kind
-    processes = []
-    for process in psutil.process_iter(["pid", "name", "username", "cpu_percent", "memory_info"]):
-        try:
-            processes.append({"pid": process.info["pid"], "name": process.info["name"], "user": process.info["username"], "cpu": process.info["cpu_percent"], "rss": process.info["memory_info"].rss})
-        except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-            continue
-    data["top_cpu"] = sorted(processes, key=lambda item: item["cpu"], reverse=True)[:10]
-    data["top_rss"] = sorted(processes, key=lambda item: item["rss"], reverse=True)[:10]
+    try:
+        from .intelligence import deep_snapshot
+        data["intelligence"] = deep_snapshot(kind, evidence)
+    except Exception as error:
+        # Keep the original lightweight snapshot useful during partial system
+        # failures, while making the missing enrichment explicit to reviewers.
+        data["intelligence"] = {"available": False, "error": type(error).__name__}
+        if evidence is not None:
+            data["flight_recorder"] = evidence
     return store(kind, data)
 
 

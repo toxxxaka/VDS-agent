@@ -1,0 +1,20 @@
+id: failed-service
+title: Failed service investigation
+description: Collect evidence for a failed systemd service before any restart is considered.
+conditions:
+  - A monitored systemd unit is failed.
+diagnostics:
+  - tool: monitoring_health
+    arguments: {}
+  - tool: service_status
+    arguments: {}
+  - tool: diagnose_load
+    arguments:
+      limit: 5
+action: restart_monitoringbot
+cooldown_seconds: 900
+max_attempts: 2
+rollback: Inspect the service journal and use the existing deployment rollback procedure; no automatic rollback command is run.
+post_check:
+  - monitoring_health
+  - service_status

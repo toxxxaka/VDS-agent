@@ -11,6 +11,9 @@
   "features": {
     "adaptive_baseline": false,
     "telegram_outbox": false,
-    "external_heartbeat": false
+    "external_heartbeat": false,
+    "incident_intelligence": false,
+    "port_baseline_detection": false,
+    "ioc_detect_only": false
   }
 }

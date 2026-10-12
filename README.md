@@ -84,6 +84,8 @@ Optional controls in `config/monitoringbot.json` keep new behaviour reviewable:
 - **Flight Recorder** retains a small in-memory window of recent telemetry and writes it only when an incident is opened.
 - **Adaptive baseline** calculates an hourly local baseline in shadow mode. It records potential anomalies but never changes alert delivery or thresholds automatically.
 - **Telegram outbox** retries failed notification delivery with bounded backoff and deduplication.
+- **Incident Intelligence** detects failed service units, captures bounded forensics and runs listener/IOC checks in detect-only mode.
+- **Recovery Studio** loads tracked YAML runbooks for dry-runs and audited approval workflows; YAML never executes shell commands.
 
 All three are disabled by default. Validate a prospective non-secret configuration before deployment:
 
@@ -196,6 +198,7 @@ GitHub Actions installs dependencies, compiles Python, runs the unit suite, chec
 - [MCP and Telegram AI](docs/MCP.md)
 - [Firewall model](docs/FIREWALL.md)
 - [Operations and release procedure](docs/OPERATIONS.md)
+- [Recovery runbooks](runbooks/)
 - [Security policy](SECURITY.md)
 
 ## License

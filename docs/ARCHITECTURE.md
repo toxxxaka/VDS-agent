@@ -92,3 +92,24 @@ Runtime SQLite files are kept owner-only (`0600`) and their directory is private
 health, OOM and infrastructure templates also use `NoNewPrivileges`, private
 temporary/devices and a strict read-only system view with only their runtime
 paths writable.
+
+## Incident intelligence and recovery
+
+When enabled in the non-secret configuration, the health collector treats a real
+`systemctl --failed` service unit as a critical incident. An incident snapshot
+is bounded and captures process rankings (CPU/RSS/cumulative I/O), cgroup unit
+mapping where available, TCP connections, restart counters, grouped warning
+patterns, patch state and detect-only IOC inventory. It never terminates a
+process, blocks a connection or changes a service.
+
+Listener and IOC checks first establish a local SQLite baseline. Later changes
+are reported as evidence; they are not proof of compromise and are never acted
+on automatically. The forensics export anonymizes IPv4 addresses before it is
+downloaded.
+
+Recovery Studio loads tracked YAML runbooks. A runbook may contain only fixed
+shared diagnostic tools and a named allow-listed action. Dry-runs execute only
+the diagnostic steps. Approval records are audited in SQLite; action execution
+continues through the existing action-specific confirmation and privileged
+helper, never through YAML or arbitrary shell input. `four_eyes: true` in the
+private auth configuration requires approvals from two distinct admins.

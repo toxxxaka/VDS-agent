@@ -120,6 +120,35 @@ def notify(state, key, active, text, cfg, severity="high"):
         if not policy.quiet:
             send(f"✅ Восстановление: {key}" + (f"\nIncident: #{iid}" if iid else ""))
 
+
+def _sample_intelligence(state, cfg):
+    """Observe failed units and optional detect-only intelligence independently of network state."""
+    try:
+        from v4.intelligence import failed_units, ioc_checks, listener_baseline
+        failed = set(failed_units())
+        known = {key.removeprefix("Failed unit: ") for key in state.get("alerts", {}) if key.startswith("Failed unit: ")}
+        for unit in sorted(failed | known):
+            notify(state, f"Failed unit: {unit}", unit in failed, f"🔴 systemd unit failed: {unit}", cfg, severity="critical")
+        settings = load_settings().features
+        scan_due = float(state.get("intelligence_scan_at", 0)) <= time.time()
+        if scan_due and (settings.port_baseline_detection or settings.ioc_detect_only):
+            findings = {}
+            if settings.port_baseline_detection:
+                ports = listener_baseline()
+                findings["new_listeners"] = ports.get("new_listeners", [])
+                for listener in findings["new_listeners"]:
+                    notify(state, f"New listener: {listener}", True, f"⚠️ New listening socket: {listener}", cfg, severity="high")
+            if settings.ioc_detect_only:
+                iocs = ioc_checks()
+                findings["ioc"] = iocs.get("new", {})
+                for category, values in findings["ioc"].items():
+                    if values:
+                        notify(state, f"IOC: {category}", True, f"⚠️ Detect-only IOC change: {category} ({len(values)})", cfg, severity="high")
+            state["intelligence_last_scan"] = findings
+            state["intelligence_scan_at"] = time.time() + 900
+    except Exception:
+        LOG.exception("Incident intelligence sample failed")
+
 def sample(state, cfg):
     cores = os.cpu_count() or 1
     load1, load5, load15 = os.getloadavg(); per_core = load1 / cores
@@ -137,6 +166,7 @@ def sample(state, cfg):
     notify(state, "CPU", cpu >= cfg["cpu_percent"], f"⚠️ Высокая загрузка CPU\n{context}", cfg)
     notify(state, "LA 1 мин", load1 > cfg["load_one"], f"⚠️ Высокий Load Average\n{context}", cfg)
     notify(state, "LA на ядро", per_core > cfg["per_cpu_load"], f"⚠️ Высокая нагрузка на ядро\n{context}", cfg)
+    _sample_intelligence(state, cfg)
     interface = default_interface()
     if not interface: return
     received, packets = net_counters(interface); old = state.setdefault("network", {}).get(interface)
@@ -151,6 +181,7 @@ def sample(state, cfg):
     notify(state, "Пакеты в секунду", pps >= cfg["inbound_pps"], f"⚠️ Высокая частота пакетов\n{context}", cfg)
     notify(state, "SYN-RECV", syn >= cfg["syn_recv"], f"⚠️ Много TCP SYN-RECV\n{context}", cfg)
     notify(state, "TCP-соединения", total >= cfg["tcp_connections"], f"⚠️ Много TCP-соединений\n{context}", cfg)
+
 
 def main():
     parser = argparse.ArgumentParser()

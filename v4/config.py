@@ -31,6 +31,9 @@ class FeatureFlags:
     adaptive_baseline: bool = False
     telegram_outbox: bool = False
     external_heartbeat: bool = False
+    incident_intelligence: bool = False
+    port_baseline_detection: bool = False
+    ioc_detect_only: bool = False
 
 
 @dataclass(frozen=True)

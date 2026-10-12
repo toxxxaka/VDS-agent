@@ -109,6 +109,30 @@ def build_mcp():
         """Read VDS-Agent self-monitoring health."""
         return _call("monitoring_health")
 
+    @mcp.tool()
+    def incident_investigate(incident_id: int) -> dict:
+        """Read incident evidence, snapshot and labelled local timeline."""
+        return _call("incident_investigate", {"incident_id": incident_id})
+
+    @mcp.tool()
+    def forensics_export(incident_id: int) -> dict:
+        """Build an anonymized evidence bundle for one incident."""
+        return _call("forensics_export", {"incident_id": incident_id})
+
+    @mcp.tool()
+    def patch_status() -> dict:
+        """Read security updates, reboot-required, needrestart and unattended-upgrades state."""
+        return _call("patch_status")
+
+    @mcp.tool()
+    def security_detect(mode: str = "all") -> dict:
+        """Run detect-only listener baseline and lightweight IOC checks."""
+        return _call("security_detect", {"mode": mode})
+
+    @mcp.tool()
+    def historical_query(at: float, window_seconds: int = 1800) -> dict:
+        """Read explicitly historical raw metrics around a Unix timestamp."""
+        return _call("historical_query", {"at": at, "window_seconds": window_seconds})
 
     return mcp
 

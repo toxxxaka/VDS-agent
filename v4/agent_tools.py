@@ -314,6 +314,66 @@ def monitoring_health(_: dict[str, Any] | None = None) -> dict[str, Any]:
     return self_monitoring_report()
 
 
+def incident_investigate(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return bounded evidence and a labelled timeline for one incident."""
+    try:
+        incident_id = int((arguments or {}).get("incident_id"))
+    except (TypeError, ValueError) as error:
+        raise ToolError("incident_id must be a positive integer") from error
+    if incident_id < 1:
+        raise ToolError("incident_id must be a positive integer")
+    from .intelligence import incident_evidence
+    evidence = incident_evidence(incident_id)
+    if evidence is None:
+        raise ToolError("incident was not found")
+    return evidence
+
+
+def forensics_export(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build an anonymized, bounded incident evidence bundle for postmortem use."""
+    try:
+        incident_id = int((arguments or {}).get("incident_id"))
+    except (TypeError, ValueError) as error:
+        raise ToolError("incident_id must be a positive integer") from error
+    from .intelligence import forensics_export as build_export
+    result = build_export(incident_id)
+    if result is None:
+        raise ToolError("incident was not found")
+    return result
+
+
+def patch_status(_: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Read patch, reboot-required, needrestart and unattended-upgrades status."""
+    from .intelligence import patch_status as collect_patch_status
+    return collect_patch_status()
+
+
+def security_detect(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Run explicitly detect-only listener baseline and IOC inventory checks."""
+    mode = (arguments or {}).get("mode", "all")
+    if mode not in {"all", "listeners", "ioc"}:
+        raise ToolError("mode must be all, listeners or ioc")
+    from .intelligence import ioc_checks, listener_baseline
+    result: dict[str, Any] = {"detect_only": True}
+    if mode in {"all", "listeners"}: result["listeners"] = listener_baseline()
+    if mode in {"all", "ioc"}: result["ioc"] = ioc_checks()
+    return result
+
+
+def historical_query(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fetch explicitly historical raw metrics around a caller-supplied epoch."""
+    arguments = arguments or {}
+    try:
+        at = float(arguments.get("at"))
+        window = int(arguments.get("window_seconds", 1800))
+    except (TypeError, ValueError) as error:
+        raise ToolError("at and window_seconds must be numeric") from error
+    if at < 1:
+        raise ToolError("at must be a Unix timestamp")
+    from .intelligence import historical_metrics
+    return historical_metrics(at, window)
+
+
 ADMIN_ACTIONS = {
     "restart_monitoringbot": ["/usr/bin/systemctl", "restart", "monitoringbot.service"],
     "restart_web": ["/usr/bin/systemctl", "restart", "monitorbot-web.service"],
@@ -402,6 +462,11 @@ TOOLS = {
     "incidents_query": incidents_query,
     "network_diagnostics": network_diagnostics,
     "monitoring_health": monitoring_health,
+    "incident_investigate": incident_investigate,
+    "forensics_export": forensics_export,
+    "patch_status": patch_status,
+    "security_detect": security_detect,
+    "historical_query": historical_query,
     "admin_action": admin_action,
 }
 
