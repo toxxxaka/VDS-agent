@@ -34,3 +34,6 @@ class RunbookTests(unittest.TestCase):
     def test_dry_run_uses_only_allowlisted_diagnostics(self):
         result=runbooks.dry_run('test-book','42',{'allowed_user_ids':['42']})
         self.assertEqual(result['status'],'dry_run'); self.assertEqual(result['evidence'][0]['tool'],'server_status')
+    def test_server_side_session_role_allows_browser_runbook(self):
+        result=runbooks.dry_run('test-book','browser:203.0.113.4',{'_session_recovery_role':'admin'})
+        self.assertEqual(result['status'],'dry_run')

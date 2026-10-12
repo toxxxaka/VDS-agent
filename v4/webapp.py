@@ -123,13 +123,13 @@ def consume_totp_step(user, step, now=None):
     return True
 
 
-def new_session(user):
+def new_session(user, recovery_role="admin"):
     now = time.time()
     with connect() as connection:
         clear_expired(connection, now)
         cursor = connection.execute(
             "INSERT INTO pending_actions(kind,user_id,target,expires_at,data) VALUES(?,?,?,?,?)",
-            ("web_session", user, "", now + TTL, json.dumps({"totp_at": now})),
+            ("web_session", user, "", now + TTL, json.dumps({"totp_at": now, "recovery_role": recovery_role})),
         )
         return cursor.lastrowid
 
@@ -156,7 +156,7 @@ def web_session(header, now=None):
             data = json.loads(row["data"] or "{}")
         except json.JSONDecodeError:
             data = {}
-        return {"user_id": row["user_id"], "totp_at": float(data.get("totp_at", 0))}
+        return {"user_id": row["user_id"], "totp_at": float(data.get("totp_at", 0)), "recovery_role": data.get("recovery_role")}
 
 
 def web_user(header):
@@ -463,7 +463,7 @@ class Handler(BaseHTTPRequestHandler):
                 audit(telegram_user, "web_totp", result="denied", details={"reason": "replay"})
                 self.reply(403, {"error": "authentication replay rejected"})
                 return
-            session_id = new_session(telegram_user)
+            session_id = new_session(telegram_user, "admin")
             audit(telegram_user, "web_totp", result="ok")
             # Telegram runs the Mini App in an embedded cross-site WebView.
             # Auth still requires signed initData plus TOTP, so SameSite=None is

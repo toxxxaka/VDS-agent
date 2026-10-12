@@ -11,8 +11,11 @@ def role_for(user: str, config: dict | None = None) -> str:
     role = roles.get(str(user)) if isinstance(roles, dict) else None
     if role in ROLE_ORDER:
         return role
-    # Existing installations used one authenticated owner role. Keep that
-    # behaviour until an administrator deliberately supplies a roles mapping.
+    # Recovery Studio receives this value only from the server-side SQLite
+    # session created after a successful TOTP check. It is not derived from an
+    # IP address, request header or browser-supplied principal text.
+    if config.get("_session_recovery_role") in ROLE_ORDER:
+        return str(config["_session_recovery_role"])
     return "admin" if str(user) in {str(value) for value in config.get("allowed_user_ids", [])} else "viewer"
 
 
