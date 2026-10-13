@@ -241,3 +241,10 @@ class LibraryUrlTests(unittest.TestCase):
     def test_temporary_downloads_use_monitoring_hostname(self):
         from v4 import library
         self.assertEqual(library.PUBLIC_URL, "https://monitoring.0x870x4k3r.tech")
+
+class LibraryAvailabilityTests(unittest.TestCase):
+    def test_unreadable_script_is_a_safe_library_error(self):
+        from v4 import library
+        with patch.object(library.Path, "read_text", side_effect=PermissionError):
+            with self.assertRaisesRegex(ValueError, "temporarily unavailable"):
+                library.content("boot-check")

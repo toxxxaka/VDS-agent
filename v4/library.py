@@ -39,7 +39,9 @@ def info():
 def content(key):
  filename=SCRIPTS.get(key,('',))[0]; path=(ROOT/filename).resolve()
  if not filename or not path.is_file() or ROOT not in path.parents: raise ValueError('script not found')
- return filename,path.read_text(errors='replace')
+
+ try: return filename,path.read_text(errors='replace')
+ except OSError as exc: raise ValueError('script is temporarily unavailable') from exc
 def issue_link(user,key):
  filename,_=content(key); token=secrets.token_urlsafe(24)
  with connect() as c:
@@ -52,5 +54,5 @@ def download(token):
  for row in rows:
   try:
    if secrets.compare_digest(json.loads(row['data']).get('token',''),token): return content(row['target'])
-  except (json.JSONDecodeError,TypeError): pass
+  except (json.JSONDecodeError, TypeError, ValueError): pass
  return None
