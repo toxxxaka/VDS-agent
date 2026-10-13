@@ -25,7 +25,7 @@ from . import external_tools
 from . import ai
 from . import self_monitoring
 from . import console
-from . import intelligence, runbooks
+from . import intelligence, runbooks, stage78
 from .tasks import TASKS, get_run, list_runs, start_run, recover_pending, cancel_run
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -378,8 +378,13 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, self_monitoring.report())
             return
         if self.path == "/api/patch-status":
-            self.reply(200, intelligence.patch_status())
-            return
+            self.reply(200, intelligence.patch_status()); return
+        if self.path == "/api/timeline":
+            self.reply(200, {"timeline": stage78.timeline(time.time()-86400)}); return
+        if self.path == "/api/maintenance":
+            self.reply(200, {"windows": stage78.maintenance()}); return
+        if self.path == "/api/report/weekly":
+            self.reply(200, {"html": stage78.report()}); return
         if self.path == "/api/runbooks":
             self.reply(200, {"runbooks": runbooks.list_runbooks(), "runs": runbooks.runs()})
             return
@@ -514,8 +519,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = intelligence.incident_evidence(incident_id)
             self.reply(200, payload) if payload else self.reply(404, {"error": "incident not found"})
             return
-        session = web_session(self.headers.get("Cookie", "")) or {}
-        runbook_config = cfg() | {"_session_recovery_role": session.get("recovery_role")}
+        if self.path.startswith("/api/runbooks/"):
+            session = web_session(self.headers.get("Cookie", "")) or {}
+            runbook_config = cfg() | {"_session_recovery_role": session.get("recovery_role")}
         if re.fullmatch(r"/api/runbooks/[a-z0-9-]+/dry-run", self.path):
             try: self.reply(200, runbooks.dry_run(self.path.split("/")[-2], telegram_user, runbook_config))
             except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
@@ -528,6 +534,19 @@ class Handler(BaseHTTPRequestHandler):
             data = self.body() or {}
             try: self.reply(200, runbooks.decide(str(data.get("run_id", "")), telegram_user, bool(data.get("approve")), runbook_config))
             except (ValueError, PermissionError) as exc: self.reply(400, {"error": str(exc)})
+            return
+        if self.path == "/api/packs":
+            try:self.reply(200, stage78.packs(str((self.body() or {}).get("pack","all"))))
+            except ValueError as exc:self.reply(400,{"error":str(exc)})
+            return
+        if self.path == "/api/maintenance":
+            data=self.body() or {}
+            try:self.reply(200,{"id":stage78.create_maintenance(telegram_user,data.get("start_at"),data.get("end_at"),data.get("services",[]),data.get("note",""))})
+            except (ValueError,TypeError) as exc:self.reply(400,{"error":str(exc)})
+            return
+        if self.path == "/api/demo":
+            try:self.reply(200,stage78.demo(str((self.body() or {}).get("kind",""))))
+            except ValueError as exc:self.reply(400,{"error":str(exc)})
             return
         if self.path == "/api/console":
             data = self.body(limit=1024) or {}

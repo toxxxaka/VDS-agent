@@ -309,6 +309,14 @@ def network_diagnostics(arguments: dict[str, Any] | None = None) -> dict[str, An
     return result
 
 
+def service_pack(arguments=None):
+    from .stage78 import packs
+    return packs((arguments or {}).get("pack", "all"))
+
+def weekly_report(_: dict | None = None):
+    from .stage78 import report
+    return {"html": report()}
+
 def monitoring_health(_: dict[str, Any] | None = None) -> dict[str, Any]:
     """Read VDS-Agent service, metric freshness and SQLite health summary."""
     return self_monitoring_report()
@@ -461,6 +469,8 @@ TOOLS = {
     "metrics_query": metrics_query,
     "incidents_query": incidents_query,
     "network_diagnostics": network_diagnostics,
+    "service_pack": service_pack,
+    "weekly_report": weekly_report,
     "monitoring_health": monitoring_health,
     "incident_investigate": incident_investigate,
     "forensics_export": forensics_export,

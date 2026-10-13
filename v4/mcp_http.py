@@ -110,6 +110,16 @@ def build_mcp():
         return _call("monitoring_health")
 
     @mcp.tool()
+    def service_pack(pack: str = "all") -> dict:
+        """Read bounded container, network, web or backup diagnostics."""
+        return _call("service_pack", {"pack": pack})
+
+    @mcp.tool()
+    def weekly_report() -> dict:
+        """Generate a local weekly HTML incident/capacity report."""
+        return _call("weekly_report")
+
+    @mcp.tool()
     def incident_investigate(incident_id: int) -> dict:
         """Read incident evidence, snapshot and labelled local timeline."""
         return _call("incident_investigate", {"incident_id": incident_id})
