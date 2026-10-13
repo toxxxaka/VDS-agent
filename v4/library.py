@@ -3,7 +3,7 @@ import json, secrets, time
 from pathlib import Path
 from .storage import connect
 ROOT=Path('/opt/monitoringbot/client-scripts').resolve()
-PUBLIC_URL='https://monitoring.example.com'
+PUBLIC_URL='https://monitoring.0x870x4k3r.tech'
 SCRIPTS={
  'change-ip':('change-ip.sh','Change public IPv4 for ISPmanager / FASTPANEL','root, changing'),
  'boot-check':('boot-check.sh','Diagnose current and previous boots','root, read-only'),
@@ -19,6 +19,16 @@ SCRIPTS={
  'site-check':('site-check.sh','HTTP/S site checks','read-only'),
  'cert-watch':('cert-watch.sh','Find expiring local TLS certificates','read-only'),
  'password-gen':('password-gen','Generate strong segmented password','read-only'),
+ 'access-audit':('access-audit.sh','Audit SSH and privileged access','root, read-only'),
+ 'backup-audit':('backup-audit.sh','Inspect backup freshness and free space','read-only'),
+ 'docker-health':('docker-health.sh','Inspect Docker health and restart loops','root, read-only'),
+ 'fetch-check-tw':('fetch-check-tw.sh','Download external check only after SHA-256 verification','downloads external code'),
+ 'ispmanager-login-link':('ispmanager-login-link.sh','Create an ISPmanager login link','root, credential-sensitive output'),
+ 'tw-helper':('tw-helper.sh','Timeweb helper script','review before use'),
+ 'tw-script1':('tw_script1.sh','Extended diagnostic snapshot','root, read-only'),
+ 'tw-script2':('tw_script2.py','Extended diagnostic snapshot','root, read-only'),
+ 'tw-script2-guide':('tw_script2.md','Guide for extended diagnostic snapshot','documentation'),
+ 'commands-guide':('COMMANDS.md','Client scripts command reference','documentation'),
 }
 def info():
  out=[]

@@ -236,3 +236,8 @@ class ConsolePresentationTests(unittest.TestCase):
         with patch.object(snapshots, "latest_metric", return_value={"cpu": 12.5}):
             with patch.object(snapshots.psutil, "cpu_times", return_value=(1.0, 1.0)):
                 self.assertEqual(snapshots.live_cpu_percent(), 12.5)
+
+class LibraryUrlTests(unittest.TestCase):
+    def test_temporary_downloads_use_monitoring_hostname(self):
+        from v4 import library
+        self.assertEqual(library.PUBLIC_URL, "https://monitoring.0x870x4k3r.tech")
