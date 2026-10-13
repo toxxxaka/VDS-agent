@@ -91,3 +91,8 @@ Before deployment, take the normal runtime database backup. To roll back the
 application code, restore the previous release symlink and restart the same
 units. The additional tables can remain; older code ignores them. Do not delete
 SQLite tables as part of rollback.
+
+## Bot control
+
+`config/nginx/vds-agent-bot-control.conf` defines one mode for the public VDS-Agent vhosts:
+`off`, `observe`, or `enforce`. `observe` writes matching unwanted bot UAs to a dedicated log and applies a smaller rate bucket to declared search crawlers. `enforce` returns `403` to the unwanted-bot list. No user agent receives a trust bypass, so claiming to be Google only selects the stricter crawler limit.

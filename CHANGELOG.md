@@ -33,3 +33,4 @@ All notable changes to VDS Agent are documented here.
 - Clamped network and disk counter resets so charts never show negative rates.
 - Corrected OOM state-directory hardening and preserved the Telegram journal helper path.
 - Escaped and bounded AI-provider output for Telegram and handled compatible JSON as well as SSE responses.
+- Added an nginx bot-control configuration with `off`, `observe`, and `enforce` modes. The default is `observe`.
