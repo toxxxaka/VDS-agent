@@ -3,10 +3,11 @@ import json
 import os
 import subprocess
 import time
+import threading
 
 import psutil
 
-from .metrics import cpu_percent
+from .metrics import cpu_percent, latest as latest_metric
 from .storage import connect
 
 # The personal dashboard shows VDS-Agent and server services only. Missing units
@@ -15,6 +16,27 @@ SERVICE_NAMES = (
     "monitoringbot", "monitorbot-web", "monitorbot-mcp", "monitorbot-health",
     "monitorbot-oom", "monitorbot-infrad", "nginx", "ssh", "docker", "fail2ban",
 )
+_CPU_PREVIOUS = None
+_CPU_LOCK = threading.Lock()
+
+
+def live_cpu_percent() -> float:
+    """Return a non-blocking CPU estimate for an interactive overview.
+
+    Telemetry keeps its one-second sample interval. The dashboard never waits a
+    second simply to render; its first value uses the latest persisted sample.
+    """
+    global _CPU_PREVIOUS
+    current = psutil.cpu_times()
+    total = float(sum(current))
+    idle = float(getattr(current, "idle", 0.0) + getattr(current, "iowait", 0.0))
+    with _CPU_LOCK:
+        previous = _CPU_PREVIOUS
+        _CPU_PREVIOUS = (total, idle)
+    if previous is not None and total > previous[0]:
+        return round(max(0.0, min(100.0, 100.0 * (1.0 - (idle - previous[1]) / (total - previous[0])))), 1)
+    recent = latest_metric()
+    return round(float(recent.get("cpu", 0.0)), 1) if recent else 0.0
 
 
 def service_states():
@@ -39,7 +61,7 @@ def overview():
     return {
         "time": time.time(),
         "hostname": os.uname().nodename,
-        "cpu": {"percent": cpu_percent(), "cores": psutil.cpu_count() or 0, "load": list(os.getloadavg())},
+        "cpu": {"percent": live_cpu_percent(), "cores": psutil.cpu_count() or 0, "load": list(os.getloadavg())},
         "memory": {"total": memory.total, "available": memory.available, "used": memory.used, "cached": getattr(memory, "cached", 0), "percent": memory.percent, "swap_percent": swap.percent},
         "disk": {"total": disk.total, "used": disk.used, "free": disk.free, "percent": disk.percent},
         "network": {"bytes_sent": net.bytes_sent, "bytes_recv": net.bytes_recv, "packets_sent": net.packets_sent, "packets_recv": net.packets_recv, "errin": net.errin, "errout": net.errout, "dropin": net.dropin, "dropout": net.dropout},

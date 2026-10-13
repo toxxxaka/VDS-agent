@@ -379,8 +379,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/patch-status":
             self.reply(200, intelligence.patch_status()); return
-        if self.path == "/api/timeline":
-            self.reply(200, {"timeline": stage78.timeline(time.time()-86400)}); return
+        if urllib.parse.urlparse(self.path).path == "/api/timeline":
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            preset = params.get("range", ["last"])[0]
+            ranges = {"last": 0, "day": 86400, "week": 604800}
+            try:
+                if preset == "custom":
+                    start_at = float(params.get("start_at", [""])[0])
+                    end_at = float(params.get("end_at", [""])[0])
+                    if not 0 < start_at < end_at <= time.time() + 60 or end_at - start_at > 31 * 86400:
+                        raise ValueError
+                    entries = stage78.timeline(start_at, end_at, 240)
+                elif preset in ranges:
+                    entries = stage78.timeline(time.time() - ranges[preset], None, 10 if preset == "last" else 240)
+                else:
+                    raise ValueError
+            except (TypeError, ValueError):
+                self.reply(400, {"error": "invalid timeline range"}); return
+            self.reply(200, {"timeline": entries, "range": preset}); return
         if self.path == "/api/maintenance":
             self.reply(200, {"windows": stage78.maintenance()}); return
         if self.path == "/api/report/weekly":

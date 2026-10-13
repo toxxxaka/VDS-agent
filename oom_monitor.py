@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 from v4.incidents import observe
 from v4.snapshots import capture
-STATE=Path('/var/lib/monitoringbot-oom/state.json'); TOKEN=os.environ.get('TELEGRAM_BOT_TOKEN',''); CHAT=os.environ.get('TELEGRAM_CHAT_ID','')
+STATE=Path(os.environ.get('MONITORINGBOT_OOM_STATE', '/var/lib/monitorbot-oom/state.json')); TOKEN=os.environ.get('TELEGRAM_BOT_TOKEN',''); CHAT=os.environ.get('TELEGRAM_CHAT_ID','')
 S=requests.Session(); S.trust_env=False; LOG=logging.getLogger('monitorbot-oom')
 def send(text):
     try: return S.post(f'https://api.telegram.org/bot{TOKEN}/sendMessage',json={'chat_id':CHAT,'text':text},timeout=(5,20)).json().get('ok',False)

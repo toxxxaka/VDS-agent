@@ -222,3 +222,17 @@ class ExternalToolsTests(unittest.TestCase):
         with patch.object(external_tools.socket, "getaddrinfo", return_value=[(None, None, None, None, ("127.0.0.1", 443))]):
             with self.assertRaises(ValueError):
                 external_tools._public_target("localhost")
+
+class ConsolePresentationTests(unittest.TestCase):
+    def test_virtual_disk_health_is_clear_without_smartctl(self):
+        from v4 import agent_tools
+        with patch.object(agent_tools.Path, "is_file", return_value=False):
+            result = agent_tools.console_diagnostic({"topic": "disk", "option": "health"})
+        self.assertIn("virtual", result["text"].lower())
+
+    def test_dashboard_cpu_is_non_blocking_and_uses_latest_sample_fallback(self):
+        from v4 import snapshots
+        snapshots._CPU_PREVIOUS = None
+        with patch.object(snapshots, "latest_metric", return_value={"cpu": 12.5}):
+            with patch.object(snapshots.psutil, "cpu_times", return_value=(1.0, 1.0)):
+                self.assertEqual(snapshots.live_cpu_percent(), 12.5)

@@ -585,7 +585,14 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
         if option == "usage": return {"filesystems": [{"mount": part.mountpoint, "used": psutil.disk_usage(part.mountpoint).used, "total": psutil.disk_usage(part.mountpoint).total, "percent": psutil.disk_usage(part.mountpoint).percent} for part in psutil.disk_partitions(all=False)]}
         if option == "inodes":
             return {"inodes": [{"mount": part.mountpoint, "used": max(0, os.statvfs(part.mountpoint).f_files - os.statvfs(part.mountpoint).f_ffree), "total": os.statvfs(part.mountpoint).f_files} for part in psutil.disk_partitions(all=False)]}
-        if option == "health": return {"health": _run(["/usr/sbin/smartctl", "--scan-open"], timeout=10, limit=4000)}
+        if option == "health":
+            smartctl = Path("/usr/sbin/smartctl")
+            if not smartctl.is_file():
+                return {"text": "SMART/NVMe health is unavailable: smartmontools is not installed and this virtual server may not expose a physical disk."}
+            result = _run([str(smartctl), "--scan-open"], timeout=10, limit=4000)
+            if not result.get("ok"):
+                return {"text": "SMART/NVMe health is unavailable: the virtual disk is not exposed to the guest OS.", "detail": result.get("output", result.get("error", ""))}
+            return {"health": result}
         if option == "growth": return {"metrics": metric_query("30d")}
     if topic == "backup":
         report = self_monitoring_report()

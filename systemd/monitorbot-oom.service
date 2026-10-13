@@ -7,7 +7,7 @@ Type=simple
 User=root
 Group=root
 EnvironmentFile=/etc/monitoringbot-main/telegram.env
-Environment=MONITORINGBOT_STATE_DIR=/var/lib/monitoringbot
+Environment=MONITORINGBOT_OOM_STATE=/var/lib/monitorbot-oom/state.json
 ExecStart=/usr/bin/python3 /opt/monitoringbot/oom_monitor.py
 Restart=always
 RestartSec=5
@@ -28,7 +28,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 MemoryMax=256M
 CPUQuota=25%
-ReadWritePaths=/var/lib/monitoringbot /var/lib/monitorbot-oom
+ReadWritePaths=/var/lib/monitorbot-oom
 
 [Install]
 WantedBy=multi-user.target
