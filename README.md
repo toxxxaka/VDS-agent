@@ -87,7 +87,7 @@ Optional controls in `config/monitoringbot.json` keep new behaviour reviewable:
 - **Incident Intelligence** detects failed service units, captures bounded forensics and runs listener/IOC checks in detect-only mode.
 - **Recovery Studio** loads tracked YAML runbooks for dry-runs and audited approval workflows; YAML never executes shell commands.
 
-All three are disabled by default. Validate a prospective non-secret configuration before deployment:
+All optional controls are disabled by default. Validate a prospective non-secret configuration before deployment:
 
 ```bash
 python3 -m v4.cli check-config
@@ -103,6 +103,8 @@ python3 -m v4.cli check-config
 - Short-lived, caller-bound confirmations for destructive operations.
 - SQLite audit records for authentication, diagnostics and actions.
 - No arbitrary shell, filesystem, `sudo`, `nft` or root endpoint in the WebUI, Telegram AI or MCP.
+- Optional AIDE integrity checking; keep it disabled while actively changing
+  the host, then create and review a trusted baseline before enabling it.
 
 Secrets must stay outside the repository. Never commit Telegram tokens, TOTP secrets, MCP/AI tokens, private keys, session/runtime databases or private allow-lists. See [SECURITY.md](SECURITY.md).
 
@@ -192,12 +194,24 @@ GitHub Actions installs dependencies, compiles Python, runs the unit suite, chec
 | Availability is `UNKNOWN` | Add valid TCP or HTTP checks in private `servers.json`; ICMP alone is diagnostic. |
 | Controlled action does not run | Repeat it using the unexpired confirmation created for the same authenticated caller. |
 
+### Project nginx logs
+
+Project requests are separated from the normal `/var/log/nginx/` files:
+
+- `/var/log/nginx/site/` — public site;
+- `/var/log/nginx/vds-agent/` — Monitoring WebUI and MCP;
+- `/var/log/nginx/x-agent/` — X-Agent MCP and the public chat proxy.
+
+They rotate daily with 14 compressed generations. The deployment snippets,
+permissions and validation commands are in [Project nginx logs](docs/LOGGING.md).
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [MCP and Telegram AI](docs/MCP.md)
 - [Firewall model](docs/FIREWALL.md)
 - [Operations and release procedure](docs/OPERATIONS.md)
+- [Project nginx logs](docs/LOGGING.md)
 - [Recovery runbooks](runbooks/)
 - [Security policy](SECURITY.md)
 

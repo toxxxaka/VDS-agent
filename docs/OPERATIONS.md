@@ -39,6 +39,19 @@ metric freshness and an authenticated read-only health request. The nginx
 configuration only needs reload after an nginx vhost change and after a
 successful `nginx -t`.
 
+## nginx project logs
+
+Keep default nginx logs intact and place project traffic in separate directories:
+`/var/log/nginx/site`, `/var/log/nginx/vds-agent`, and
+`/var/log/nginx/x-agent`. Install the tracked nginx log snippets and
+`config/logrotate/nginx-project-logs`, validate both `nginx -t` and
+`logrotate -d`, then reload nginx. See [Project nginx logs](LOGGING.md).
+
+The optional AIDE timer may remain disabled during rapid, expected host and
+application changes. Do not re-enable it or update its baseline until the
+expected changes have been reviewed and a trusted baseline is explicitly
+created.
+
 ## Health-gated rollback
 
 Revert the symlink to the previous release and restart the same VDS-Agent units

@@ -6,6 +6,9 @@ All notable changes to VDS Agent are documented here.
 
 ### Added
 
+- Separate, rotating nginx log templates for the public site, VDS Agent and
+  X-Agent, with an operational guide that keeps default nginx logs intact.
+
 - Shared bounded diagnostics backend for Telegram AI, Safe Console and Streamable HTTP MCP.
 - Bearer-protected MCP service, deployment templates and documentation.
 - Telegram `/ai` focused subcommands, bounded multi-step diagnostics, context, owner-bound confirmations and compact evidence-first responses.
@@ -16,6 +19,9 @@ All notable changes to VDS Agent are documented here.
 - CI compilation, test, JavaScript syntax and credential-guard stages.
 
 ### Changed
+
+- Documented the intentional temporary pause of the optional AIDE timer while
+  the monitored host is under active development.
 
 - Reworked the WebUI around Dashboard, Metrics, AI and Tools, and moved incidents/activity into Tools.
 - Split frontend markup, styles and browser behaviour into maintainable static UI assets.
