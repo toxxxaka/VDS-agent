@@ -24,7 +24,8 @@ from . import storage
 
 DEMO_DB = Path(os.environ.get("MONITORINGBOT_DEMO_DB", "/var/lib/monitoringbot-demo/demo.db"))
 TTL_SECONDS = 24 * 60 * 60
-REQUEST_COOLDOWN_SECONDS = 15 * 60
+REQUEST_WINDOW_SECONDS = 24 * 60 * 60
+MAX_REQUESTS_PER_SOURCE = 3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS demo_access_requests(
  id INTEGER PRIMARY KEY, token_digest TEXT NOT NULL UNIQUE, source_digest TEXT NOT NULL,
@@ -72,10 +73,11 @@ def request_access(source_ip: str, now: float | None = None) -> dict:
     source = _digest(source_ip or "unknown")
     with _connect() as connection:
         recent = connection.execute(
-            "SELECT requested_at FROM demo_access_requests WHERE source_digest=? ORDER BY id DESC LIMIT 1", (source,)
-        ).fetchone()
-        if recent and current - float(recent["requested_at"]) < REQUEST_COOLDOWN_SECONDS:
-            retry_after = int(REQUEST_COOLDOWN_SECONDS - (current - float(recent["requested_at"])))
+            "SELECT requested_at FROM demo_access_requests WHERE source_digest=? AND requested_at>? ORDER BY requested_at ASC",
+            (source, current - REQUEST_WINDOW_SECONDS),
+        ).fetchall()
+        if len(recent) >= MAX_REQUESTS_PER_SOURCE:
+            retry_after = int(REQUEST_WINDOW_SECONDS - (current - float(recent[0]["requested_at"])))
             return {"ok": False, "retry_after": max(1, retry_after)}
         token = secrets.token_urlsafe(32)
         connection.execute(

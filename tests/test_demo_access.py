@@ -34,10 +34,15 @@ class DemoAccessTests(unittest.TestCase):
         self.assertNotIn("password", demo_access.status(request["token"], reveal=True, now=104))
         self.assertIsNotNone(demo_access.verify(record["username"], record["password"], now=105))
 
-    def test_request_is_rate_limited_and_deleted_account_cannot_sign_in(self):
+    def test_three_requests_are_allowed_per_source_per_day_and_deleted_account_cannot_sign_in(self):
         request = demo_access.request_access("198.51.100.8", now=100)
-        self.assertFalse(demo_access.request_access("198.51.100.8", now=101)["ok"])
-        account = demo_access.generate(request["id"], now=102)
+        self.assertTrue(demo_access.request_access("198.51.100.8", now=101)["ok"])
+        self.assertTrue(demo_access.request_access("198.51.100.8", now=102)["ok"])
+        rejected = demo_access.request_access("198.51.100.8", now=103)
+        self.assertFalse(rejected["ok"])
+        self.assertGreater(rejected["retry_after"], 0)
+        self.assertTrue(demo_access.request_access("198.51.100.8", now=100 + 24 * 60 * 60)["ok"])
+        account = demo_access.generate(request["id"], now=104)
         demo_access.share(request["id"], now=103)
         self.assertTrue(demo_access.delete(request["id"]))
         self.assertIsNone(demo_access.verify(account["username"], account["password"], now=104))
