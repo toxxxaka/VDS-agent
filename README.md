@@ -176,12 +176,12 @@ The snapshot timer records a cheap local point once per minute. The collector us
 
 Configure remote hosts in private `servers.json` from `config/servers.json.example`. Define TCP ports and optional HTTP endpoints for availability decisions; ICMP remains a separate diagnostic signal.
 
-### Optional Timeweb AI
+### Optional outsource AI
 
-Copy `config/timeweb-ai.env.example` outside the repository and configure:
+Copy `config/example-ai.env.example` outside the repository and configure:
 
-Required environment variable names are `TIMEWEB_AI_OPENAI_URL`,
-`TIMEWEB_AI_API_TOKEN` and `TIMEWEB_AI_MODEL`. Copy the tracked example to a
+Required environment variable names are 'EXAMPLE_URL`,
+`API_TOKEN` and `AI_MODEL`. Copy the tracked example to a
 private environment file and replace its placeholders there.
 
 The backend streams this endpoint only after existing WebUI or Telegram authentication. The browser, MCP client and audit log never receive the AI token. No live server context is sent automatically.
@@ -192,7 +192,7 @@ Copy `config/mcp.env.example` outside the repository and generate a separate ran
 
 ## Development, testing and release
 
-Development happens on `dev`; `prod` is the reviewed release branch. Publishing source is separate from deploying it to `/opt/monitoringbot`.
+Development hitting on `dev`; `prod` is the reviewed release branch. Publishing source is separate from deploying it to `/opt/monitoringbot`. anyways
 
 ```bash
 python3 -m py_compile v3.py health_monitor.py oom_monitor.py v4/*.py tests/*.py
