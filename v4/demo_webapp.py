@@ -16,12 +16,14 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import demo_access
+from . import demo_metrics, metrics
 from . import webapp as core
 
 UI_DIR = Path(__file__).with_name("demo_ui")
 HTML = (UI_DIR / "index.html").read_text(encoding="utf-8")
 ASSETS = {"app.css": "text/css; charset=utf-8", "app.js": "application/javascript; charset=utf-8", "demo-login.js": "application/javascript; charset=utf-8", "favicon.svg": "image/svg+xml"}
 DENIED_PREFIXES = ("/api/actions/power", "/api/firewall", "/api/backups")
+DEMO_DB = Path(os.environ.get("MONITORINGBOT_DB", "/var/lib/monitoringbot-demo/demo.db"))
 
 
 def _cookie(header: str, name: str) -> str:
@@ -82,6 +84,16 @@ class DemoHandler(core.Handler):
         if path == "/api/session":
             user, _ = self.auth()
             self.reply(200, {"totp": bool(user), "demo": True}); return
+        if path == "/api/metrics":
+            period = parse_qs(urlparse(self.path).query).get("range", ["1h"])[0]
+            try:
+                demo_metrics.ensure(DEMO_DB)
+                samples = metrics.query(period, path=DEMO_DB)
+                latest = metrics.latest(path=DEMO_DB)
+                self.reply(200, {"period": period, "range": period, "samples": samples, "last_sample_at": latest["time"] if latest else None, "retention_days": 30, "refresh_seconds": 60, "demo": True})
+            except ValueError as exc:
+                self.reply(400, {"error": str(exc)})
+            return
         if path.startswith(DENIED_PREFIXES):
             self.reply(404, {"error": "not available on the public demo"}); return
         user, session_user = self.auth()
@@ -118,6 +130,11 @@ class DemoHandler(core.Handler):
             with core.connect() as connection:
                 connection.execute("DELETE FROM pending_actions WHERE kind='demo_session' AND user_id=?", (token,))
             self.reply(200, {"ok": True}, {"Set-Cookie": "vds_demo=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"}); return
+        if path == "/api/ai/chat":
+            try:
+                core.ai.configured()
+            except core.ai.AIError:
+                self.reply(503, {"error": "AI is not configured for this demo. It will be available in the release."}); return
         if path.startswith(DENIED_PREFIXES) or path == "/api/totp":
             self.reply(404, {"error": "not available on the public demo"}); return
         user, session_user = self.auth()

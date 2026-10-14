@@ -45,3 +45,15 @@ window.setTimeout(()=>{
     queueMicrotask(remove);
   };
 },0);
+
+window.setTimeout(()=>{
+  const originalDashboard=dashboard;
+  dashboard=async function(){await originalDashboard();document.querySelectorAll('.service-grid .service').forEach(card=>{card.disabled=true;card.onclick=null;card.removeAttribute('data-console-run');const hint=card.querySelector('small');if(hint)hint.textContent='Available in release';});};
+  const originalLibrary=library;
+  library=async function(){await originalLibrary();const allowed=new Set(['Find large logs, caches and backups','Largest files under a path','Interface, gateway, DNS and HTTP diagnostics','Resources, OOM, SSH and service triage','Generate strong segmented password']);document.querySelectorAll('#app .card').forEach(card=>{if(!allowed.has(card.querySelector('b')?.textContent?.trim()))card.remove();});};
+  events=async function(){app.innerHTML=`<button class="link" data-page-link="tools">← Tools</button><h1>Server events</h1><p class="sub">Demo examples. Full incident history will be available in the release.</p><div class="card incident warning"><b>High CPU</b><p class="sub">Demo status · evidence and remediation will be available in the release.</p></div><div class="card incident warning"><b>Load Average</b><p class="sub">Demo status · evidence and remediation will be available in the release.</p></div>`;bind();};
+  recoveryStudio=async function(){app.innerHTML=`<button class="link" data-page-link="tools">← Tools</button><h1>Recovery Studio</h1><div class="card empty">Recovery workflows will be available in the release.</div>`;bind();};
+  stage78Page=async function(){app.innerHTML=`<button class="link" data-page-link="tools">← Tools</button><h1>Timeline & service packs</h1><div class="card empty">Timeline, historical evidence and service packs will be available in the release.</div>`;bind();};
+  const originalStart=start;
+  start=async function(command){const reports={status:['System status','CPU, memory, disk and network resources are available in the dashboard.\n\nDetailed system identity will be available in the release.'],daily:['Daily report','All systems are operating normally.\n\nDetailed daily evidence will be available in the release.'],ping:['Server availability','Server 1 — UP (demo)\nServer 2 — UP (demo)\nServer 3 — UP (demo)\n\nLive availability checks will be available in the release.'],sessions:['SSH sessions','Demo SSH session\n\nSession details will be available in the release.'],sshlogins:['SSH logins','Demo login record\n\nLogin history will be available in the release.']};if(!reports[command])return originalStart(command);const [title,text]=reports[command];app.innerHTML=`<button class="link" data-page-link="tools">← Tools</button><h1>${esc(title)}</h1><div class="card"><pre>${esc(text)}</pre></div>`;bind();};
+},0);
