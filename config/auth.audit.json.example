@@ -1,0 +1,12 @@
+{
+  "allowed_user_ids": ["VIEWER_TELEGRAM_ID", "ADMIN_TELEGRAM_ID"],
+  "roles": {
+    "VIEWER_TELEGRAM_ID": "viewer",
+    "ADMIN_TELEGRAM_ID": "admin"
+  },
+  "web_allowed_ips": [],
+  "totp_secret": "REPLACE_WITH_A_TEMPORARY_STAGING_BASE32_TOTP_SECRET",
+  "session_seconds": 3600,
+  "max_failures": 5,
+  "lockout_seconds": 900
+}

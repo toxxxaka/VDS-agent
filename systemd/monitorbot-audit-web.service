@@ -1,0 +1,27 @@
+[Unit]
+Description=VDS Agent isolated authenticated audit WebUI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monitorbot
+Group=monitorbot
+EnvironmentFile=/etc/monitoringbot-audit/audit.env
+EnvironmentFile=/etc/monitoringbot-audit/telegram.env
+Environment=MONITORINGBOT_AUDIT_DUMMY=1
+Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-audit/auth.json
+Environment=MONITORINGBOT_WEB_PORT=8788
+WorkingDirectory=/opt/monitoringbot-audit
+ExecStart=/usr/bin/python3 -m v4.audit_webapp
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/lib/monitoringbot-audit
+
+[Install]
+WantedBy=multi-user.target
