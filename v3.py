@@ -1217,6 +1217,13 @@ def poll(last_update):
             telegram("answerCallbackQuery", {"callback_query_id": callback.get("id", "")})
             if chat.get("type") != "private" or chat.get("id") != sender.get("id") or not authenticated(str(sender.get("id", ""))):
                 continue
+            if data.startswith("demo:"):
+                from v4 import demo_access
+                result = demo_access.owner_action(data)
+                if result:
+                    text, markup = result
+                    send(text, chat_id=str(chat["id"]), reply_markup=markup)
+                continue
             if data == "ai-cancel":
                 send("Действие отменено.", chat_id=str(chat["id"]))
                 continue

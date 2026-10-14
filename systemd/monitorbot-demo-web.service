@@ -1,0 +1,28 @@
+[Unit]
+Description=VDS Agent public demo WebUI (isolated, read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monitorbot
+Group=monitorbot
+SupplementaryGroups=adm
+EnvironmentFile=/etc/monitoringbot-main/telegram.env
+EnvironmentFile=/etc/monitoringbot-main/demo.env
+Environment=MONITORINGBOT_AUTH_CONFIG=/etc/monitoringbot-main/auth.json
+Environment=MONITORINGBOT_SERVERS_CONFIG=/etc/monitoringbot-main/servers.json
+Environment=MONITORINGBOT_JOURNAL_DIRECT=1
+Environment=MONITORINGBOT_WEB_PORT=8788
+WorkingDirectory=/opt/monitoringbot
+ExecStart=/usr/bin/python3 -m v4.demo_webapp
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/monitoringbot-demo
+
+[Install]
+WantedBy=multi-user.target
