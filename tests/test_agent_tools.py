@@ -201,10 +201,23 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(console.parse("services failed"), ("console_diagnostic", {"topic": "services", "option": "failed"}))
         self.assertEqual(console.parse("network syn"), ("console_diagnostic", {"topic": "network", "option": "syn"}))
         self.assertEqual(console.parse("swap usage"), ("console_diagnostic", {"topic": "swap", "option": "usage"}))
+        self.assertEqual(console.parse("swap pressure"), ("console_diagnostic", {"topic": "swap", "option": "pressure"}))
         self.assertEqual(console.parse("kernel reclaim"), ("console_diagnostic", {"topic": "kernel", "option": "reclaim"}))
+        self.assertEqual(console.parse("kernel hung-tasks"), ("console_diagnostic", {"topic": "kernel", "option": "hung-tasks"}))
+        self.assertEqual(console.parse("service restarts monitorbot-web.service"), ("console_diagnostic", {"topic": "service", "option": "restarts:monitorbot-web.service"}))
+        self.assertEqual(console.parse("apt health"), ("console_diagnostic", {"topic": "apt", "option": "health"}))
+        self.assertEqual(console.parse("ssh sessions"), ("console_diagnostic", {"topic": "ssh", "option": "sessions"}))
         self.assertEqual(console.parse("diagnose network"), ("console_diagnostic", {"topic": "diagnose", "option": "network"}))
         with self.assertRaisesRegex(agent_tools.ToolError, "network <summary"):
             console.parse("network invalid")
+
+    def test_man_page_is_local_and_does_not_invoke_tool(self):
+        from v4 import console
+        with patch.object(console, "execute") as execute:
+            result = console.run("man processes", "web:42")
+        self.assertEqual(result["tool"], "manual")
+        self.assertIn("SYNOPSIS", result["text"])
+        execute.assert_not_called()
 
     def test_dashboard_service_units_are_allow_listed_for_status(self):
         from v4 import console
@@ -264,6 +277,10 @@ class LibraryUrlTests(unittest.TestCase):
 class LibraryAvailabilityTests(unittest.TestCase):
     def test_unreadable_script_is_a_safe_library_error(self):
         from v4 import library
-        with patch.object(library.Path, "read_text", side_effect=PermissionError):
-            with self.assertRaisesRegex(ValueError, "temporarily unavailable"):
-                library.content("boot-check")
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "boot-check.sh").write_text("#!/bin/sh\n")
+            with patch.object(library, "ROOT", root), patch.object(library.Path, "read_text", side_effect=PermissionError):
+                with self.assertRaisesRegex(ValueError, "temporarily unavailable"):
+                    library.content("boot-check")

@@ -29,7 +29,7 @@ The handler reads a bounded JSON body, maps each route to fixed Python functions
 
 MCP tools in `v4/mcp_http.py` are `server_status`, `diagnose_load`, `process_inspect`, `socket_inspect`, `service_status`, `service_logs`, `metrics_query`, `incidents_query`, `network_diagnostics`, `monitoring_health` and `admin_action`.
 
-The Safe Console parser in `v4/console.py` maps fixed words to `agent_tools.console_diagnostic`. It accepts no shell operators, paths or arbitrary executable names. `v4/agent_tools.py` uses fixed argv arrays with timeouts and output limits.
+The Safe Shell parser in `v4/console.py` maps fixed words to `agent_tools.console_diagnostic`, with local `man` pages that do not invoke tools. It accepts no shell operators, paths or arbitrary executable names. `v4/agent_tools.py` uses fixed argv arrays with timeouts and output limits. See [Safe Shell reference](SAFE_SHELL.md).
 
 ## External outage observer
 

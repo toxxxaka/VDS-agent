@@ -506,10 +506,12 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
     option = arguments.get("option", "")
     allowed = {
         "pressure": {""}, "oom": {"history"},
-        "swap": {"usage", "activity"}, "kernel": {"reclaim", "allocfail"},
+        "swap": {"usage", "activity", "pressure"}, "kernel": {"reclaim", "allocfail", "hung-tasks", "oops"},
         "network": {"summary", "top", "interfaces", "errors", "connections", "listen", "syn", "dns", "routes"},
-        "services": {"failed", "restart-count"}, "service": LOG_UNITS,
-        "logs": {"errors", "kernel", "ssh"}, "timers": {""}, "boot": {"analyze"},
+        "services": {"failed", "restart-count"}, "service": LOG_UNITS | {f"deps:{unit}" for unit in LOG_UNITS} | {f"restarts:{unit}" for unit in LOG_UNITS},
+        "logs": {"errors", "kernel", "ssh", "journal-size", "rotate"}, "timers": {""}, "boot": {"analyze"},
+        "apt": {"health", "pending-security"}, "time": {"sync"}, "limits": {"fd", "conntrack"},
+        "fail2ban": {"jails", "bans"}, "ssh": {"sessions", "last-logins"},
         "security": {"overview", "ssh", "fail2ban", "firewall", "ports", "updates"},
         "disk": {"usage", "inodes", "health", "growth"}, "backup": {"status", "verify"},
         "monitoring": {"health", "collectors", "alerts"}, "incidents": {"recent"},
@@ -537,10 +539,21 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
             swap = psutil.swap_memory()
             if option == "usage":
                 return {"swap": {"total_bytes": swap.total, "used_bytes": swap.used, "free_bytes": swap.free, "percent": swap.percent}}
-            return {"swap_activity": {"page_in": vmstat.get("pswpin", 0), "page_out": vmstat.get("pswpout", 0), "unit": "pages since boot"}}
+            if option == "activity":
+                return {"swap_activity": {"page_in": vmstat.get("pswpin", 0), "page_out": vmstat.get("pswpout", 0), "unit": "pages since boot"}}
+            try:
+                line = Path("/proc/pressure/memory").read_text().splitlines()[0]
+                pressure = dict(re.findall(r"(avg10|avg60|avg300|total)=([0-9.]+)", line))
+            except OSError:
+                pressure = {"available": False}
+            return {"swap_pressure": pressure, "note": "memory PSI; elevated sustained values can indicate reclaim or swap pressure"}
         if option == "reclaim":
             return {"kernel_reclaim": {key: vmstat.get(key, 0) for key in ("pgscan_kswapd", "pgscan_direct", "pgsteal_kswapd", "pgsteal_direct", "pgfault", "pgmajfault")}, "unit": "events since boot"}
-        return {"kernel_allocfail": {key: vmstat.get(key, 0) for key in ("allocstall", "allocstall_dma", "allocstall_dma32", "allocstall_normal", "pgmajfault", "oom_kill")}, "unit": "events since boot"}
+        if option == "allocfail":
+            return {"kernel_allocfail": {key: vmstat.get(key, 0) for key in ("allocstall", "allocstall_dma", "allocstall_dma32", "allocstall_normal", "pgmajfault", "oom_kill")}, "unit": "events since boot"}
+        if option == "hung-tasks":
+            return {"journal": _journal_fixed(["-k", "--grep", "blocked for more than|task .* blocked", "--since", "30 days ago", "--lines", "80"])}
+        return {"journal": _journal_fixed(["-k", "--grep", "Oops|BUG:|general protection fault", "--since", "30 days ago", "--lines", "80"])}
     if topic == "oom":
         return {"oom": _journal_fixed(["-k", "--grep", "Out of memory|Killed process", "--since", "30 days ago", "--lines", "80"])}
     if topic == "network":
@@ -579,12 +592,53 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
         for unit in sorted(LOG_UNITS):
             rows_out.append({"unit": unit, "restart_count": _run(["/usr/bin/systemctl", "show", unit, "--property", "NRestarts", "--value"], limit=100).get("output", "unknown").strip()})
         return {"restart_counts": rows_out}
-    if topic == "service": return {"service": option, "status": _run(["/usr/bin/systemctl", "status", option, "--no-pager", "--lines", "20"], timeout=8, limit=7000)}
+    if topic == "service":
+        if ":" in option:
+            mode, unit = option.split(":", 1)
+            if mode == "deps":
+                return {"service": unit, "dependencies": _run(["/usr/bin/systemctl", "show", unit, "--property", "After,Requires,Wants", "--no-pager"], timeout=8, limit=7000)}
+            return {"service": unit, "restarts": _run(["/usr/bin/systemctl", "show", unit, "--property", "NRestarts,ActiveEnterTimestamp,ExecMainStatus", "--no-pager"], timeout=8, limit=3000)}
+        return {"service": option, "status": _run(["/usr/bin/systemctl", "status", option, "--no-pager", "--lines", "20"], timeout=8, limit=7000)}
     if topic == "logs":
+        if option == "journal-size":
+            return {"journal_size": _run(["/usr/bin/journalctl", "--disk-usage"], timeout=8, limit=1000)}
+        if option == "rotate":
+            status_path = Path("/var/lib/logrotate/status")
+            try:
+                stat = status_path.stat()
+                return {"logrotate": {"state_file_present": True, "state_file_mtime": int(stat.st_mtime)}}
+            except OSError:
+                return {"logrotate": {"state_file_present": False}}
         args = {"errors": ["--priority", "err", "--since", "1 hour ago", "--lines", "80"], "kernel": ["-k", "--priority", "warning", "--since", "2 hours ago", "--lines", "80"], "ssh": ["--unit", "ssh.service", "--since", "24 hours ago", "--lines", "80"]}[option]
         return {"journal": _journal_fixed(args)}
     if topic == "timers": return {"timers": _run(["/usr/bin/systemctl", "list-timers", "--all", "--no-pager"], limit=8000)}
     if topic == "boot": return {"boot": _run(["/usr/bin/systemd-analyze", "blame"], timeout=12, limit=8000)}
+    if topic == "apt":
+        if option == "health":
+            return {"dpkg_audit": _run(["/usr/bin/dpkg", "--audit"], timeout=10, limit=4000), "note": "An empty dpkg audit result means no packages are awaiting configuration."}
+        return {"upgradable": _run(["/usr/bin/apt", "list", "--upgradable"], timeout=12, limit=5000), "note": "This is the local APT catalogue; update it separately before relying on it."}
+    if topic == "time":
+        return {"time_sync": _run(["/usr/bin/timedatectl", "show", "--property", "NTPSynchronized,NTPSync,Timezone", "--no-pager"], timeout=8, limit=2000)}
+    if topic == "limits":
+        names = {"fd": ("/proc/sys/fs/file-nr", "file_nr"), "conntrack": ("/proc/sys/net/netfilter/nf_conntrack_count", "conntrack_count")}
+        path, key = names[option]
+        try:
+            current = Path(path).read_text().strip()
+        except OSError:
+            current = "unavailable"
+        if option == "conntrack":
+            try:
+                maximum = Path("/proc/sys/net/netfilter/nf_conntrack_max").read_text().strip()
+            except OSError:
+                maximum = "unavailable"
+            return {key: current, "conntrack_max": maximum}
+        return {key: current, "format": "allocated unused maximum"}
+    if topic == "fail2ban":
+        argv = ["/usr/bin/fail2ban-client", "status"] if option == "jails" else ["/usr/bin/fail2ban-client", "status", "sshd"]
+        return {"fail2ban": _run(argv, timeout=8, limit=5000), "scope": "all jails" if option == "jails" else "sshd jail when configured"}
+    if topic == "ssh":
+        argv = ["/usr/bin/who"] if option == "sessions" else ["/usr/bin/last", "-w", "-n", "10"]
+        return {"ssh": _run(argv, timeout=8, limit=5000)}
     if topic == "security":
         if option == "overview": return {"ports": socket_inspect({"sort": "port"}), "failed_units": _run(["/usr/bin/systemctl", "--failed", "--no-legend"], limit=3000)}
         if option == "ssh": return {"ssh": _journal_fixed(["--unit", "ssh.service", "--since", "24 hours ago", "--lines", "100"])}

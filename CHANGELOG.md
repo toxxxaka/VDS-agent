@@ -6,6 +6,14 @@ All notable changes to VDS Agent are documented here.
 
 ### Added
 
+- Safe Shell manual pages (`man processes`, `man diagnose`, `man network`, `man services`, `man security`, `man system`) and bounded host diagnostics for memory pressure, kernel hung tasks/oops, local limits, package state, Fail2ban, SSH sessions, service dependencies/restarts and log retention.
+
+### Fixed
+
+- CI test isolation for unreadable client scripts: the test no longer relies on a deployment-only `/opt` path that does not exist on GitHub Actions runners.
+
+### Added
+
 - Independent dependency-free Sentinel for an external host: DNS/TCP/TLS/HTTPS probes, thresholded Telegram down/recovery alerts, a hardened systemd timer, an interactive opt-in installer, configuration template and operations guide. The installer explains the separate-host requirement and the consequence of declining it.
 - Local operator CLI commands `vds-agent status` and `vds-agent doctor`, with human-readable and `--json` output for health checks and automation.
 - Desktop Support navigation and an authenticated support request form in the primary WebUI and isolated public demo. Requests are bounded, HTML-escaped for Telegram delivery, and audited.
