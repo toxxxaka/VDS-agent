@@ -44,6 +44,7 @@ AUTH_GET_PATHS = {
 AUTH_POST_PATHS = {
     "/api/totp",
     "/api/ai/chat",
+    "/api/support",
     "/api/console",
     "/api/tools/password",
     "/api/tools/ssl",

@@ -6,6 +6,7 @@
 - Telegram bot, Mini App authorisation, TOTP sessions and MCP credentials.
 - SQLite incidents, metrics, audit history and backup metadata.
 - Root-owned helpers, systemd units and private configuration.
+- External Sentinel target definitions, its local state and separate alert delivery credentials.
 
 ## Trust boundaries
 
@@ -14,6 +15,7 @@
 3. ChatGPT MCP client → bearer gateway → shared tools.
 4. Local diagnostics/logs/process command lines → AI provider and Telegram output.
 5. Unprivileged monitoring service → narrow root helpers over sudo or Unix sockets.
+6. External Sentinel host → public DNS/TCP/TLS/HTTPS endpoint and independent Telegram delivery.
 
 ## Priority threats
 
@@ -24,6 +26,7 @@
 | Repudiation | Privileged action denial | SQLite audit | Hash chain and external checkpoint: SEC-09 |
 | Information disclosure | Secrets or logs reach browser/AI | env outside Git, partial redaction, auth | unified untrusted-output/redaction policy: SEC-01, SEC-08, SEC-11 |
 | Denial of service | nginx abuse, Docker bypass, expensive tools | IP policy, bounded tools, systemd limits | rate limits and Docker/IPv6 parity: S-04, S-06, SEC-06 |
+| Availability visibility | Full monitored-host outage cannot emit a local alert | Optional independent Sentinel with thresholded DNS/TCP/TLS/HTTPS checks | Sentinel host and Telegram delivery remain separate operational dependencies |
 | Elevation | Prompt-injected action / broad sudo | allow-list and confirmation | MCP same-actor confirmation and sudo validation: SEC-01, SEC-02 |
 
 ## Non-goals

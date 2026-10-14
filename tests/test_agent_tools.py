@@ -200,6 +200,9 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(console.parse("pressure"), ("console_diagnostic", {"topic": "pressure", "option": ""}))
         self.assertEqual(console.parse("services failed"), ("console_diagnostic", {"topic": "services", "option": "failed"}))
         self.assertEqual(console.parse("network syn"), ("console_diagnostic", {"topic": "network", "option": "syn"}))
+        self.assertEqual(console.parse("swap usage"), ("console_diagnostic", {"topic": "swap", "option": "usage"}))
+        self.assertEqual(console.parse("kernel reclaim"), ("console_diagnostic", {"topic": "kernel", "option": "reclaim"}))
+        self.assertEqual(console.parse("diagnose network"), ("console_diagnostic", {"topic": "diagnose", "option": "network"}))
         with self.assertRaisesRegex(agent_tools.ToolError, "network <summary"):
             console.parse("network invalid")
 

@@ -18,6 +18,8 @@ Timeweb AI Agent ◄── server-only v4/ai.py ◄── authenticated `/api/ai
 Health monitor ──────► incidents.py ──────► SQLite/WAL ◄───────┤
 OOM monitor ─────────► snapshots.py (incident context)         ├── backups/library/firewall/tools
 Snapshot timer ──────► metrics.py (one cheap point/minute)     └── restricted helpers
+
+External Sentinel (separate host) ──► DNS/TCP/TLS/HTTPS probes ──► independent Telegram alert
 ```
 
 The AI proxy uses the configured private OpenAI-compatible endpoint only from the backend. It forwards the current browser chat history as `user` and `assistant` messages and streams OpenAI SSE deltas back to the authenticated browser. It sends no system prompt, server telemetry, incident data, secrets, or browser credentials. It is deliberately structured as a separate module so a later context provider can be introduced without changing the chat UI or authentication route.
@@ -64,6 +66,12 @@ Tools → Server events offers All, Open and Closed views. **Close all** is an e
 - **Metrics**: historical charts and live refresh.
 - **AI**: private Timeweb Agent chat via the authenticated backend proxy, with New chat, Stop generation, streaming states and local current-chat history.
 - **Tools**: Server events, Activity/audit, diagnostics, a safe read-only console, backups, client script library, network/security checks, firewall and power actions.
+
+## External outage observation
+
+A local VDS Agent cannot announce a total loss of its own host, network, DNS or power because its WebUI, workers and Telegram bot are unavailable with that host. `sentinel/vds_agent_sentinel.py` is an optional, dependency-free observer intended for another machine. It checks configured public HTTPS targets in four layers (DNS, TCP, TLS, HTTP), records only compact probe state on the observer, and sends one `DOWN` event after three consecutive failures and one recovery event after two consecutive successes.
+
+The observer has no inbound listener or control-plane credentials for VDS Agent. It must not share SSH keys, provider tokens, WebUI/MCP tokens, TOTP material or administrator credentials with the monitored host. No Sentinel installation means no external outage signal; it does not disable or weaken any VDS Agent component.
 
 ## Operational health
 

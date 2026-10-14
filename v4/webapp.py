@@ -1,5 +1,6 @@
 """Authenticated Telegram Mini App backend for Monitoringbot v4."""
 import hashlib
+import html
 import hmac
 import ipaddress
 import json
@@ -46,6 +47,20 @@ def load_v3():
         V3 = module_from_spec(spec)
         spec.loader.exec_module(V3)
     return V3
+
+
+def notify_support(actor: str, message: str) -> bool:
+    """Send one bounded, escaped support request to the owner chat."""
+    text = str(message).strip()
+    if not 3 <= len(text) <= 2000:
+        raise ValueError("message must be between 3 and 2000 characters")
+    payload = (
+        "<b>Support request</b>\n"
+        f"<b>User:</b> <code>{html.escape(str(actor))}</code>\n"
+        "<b>Message:</b>\n"
+        f"{html.escape(text)}"
+    )
+    return bool(load_v3().send(payload))
 
 
 def browser_principal(client_ip):
@@ -496,6 +511,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         requires_step_up = self.path in {"/api/backups", "/api/firewall/request", "/api/firewall/confirm", "/api/firewall/keep", "/api/firewall/rollback", "/api/actions/ssh", "/api/actions/power"} or bool(re.fullmatch(r"/api/actions/confirm/\d+", self.path)) or bool(re.fullmatch(r"/api/runbooks/[a-z0-9-]+/(request|decision)", self.path))
         if requires_step_up and not self.require_recent_totp(telegram_user):
+            return
+        if self.path == "/api/support":
+            data = self.body(limit=4096) or {}
+            try:
+                delivered = notify_support(telegram_user, data.get("message", ""))
+            except ValueError as exc:
+                self.reply(400, {"error": str(exc)})
+                return
+            audit(telegram_user, "support_request", result="ok" if delivered else "queued")
+            self.reply(202, {"ok": True, "delivered": delivered})
             return
         if self.path == "/api/ai/chat":
             data = self.body(limit=32768) or {}

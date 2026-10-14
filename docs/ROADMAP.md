@@ -29,3 +29,7 @@ rollups provide bounded long-range queries. A feature-flagged Flight Recorder
 stores a small in-memory pre-trigger window and writes it only on an incident.
 Alert policies use explicit `for` and recovery windows, hysteresis, severity,
 deduplication, quiet hours and backoff.
+
+## Optional external outage observation
+
+Release installation offers an explicit External Sentinel choice. It explains the separate-host requirement and the consequence of declining: the local installation remains fully functional, but cannot independently report its own total outage. The Sentinel bundle is provisioned separately and never grants the primary installer remote access to another host.

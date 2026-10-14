@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "failure_threshold": 3,
+  "recovery_threshold": 2,
+  "targets": [
+    {
+      "name": "VDS Agent release",
+      "url": "https://vds-agent.0x870x4k3r.tech/",
+      "expected_status": [200, 399],
+      "timeout_seconds": 8
+    },
+    {
+      "name": "VDS Agent beta",
+      "url": "https://betatest.0x870x4k3r.tech/",
+      "expected_status": [200, 399],
+      "timeout_seconds": 8
+    }
+  ],
+  "telegram": {
+    "bot_token": "REPLACE_WITH_A_SEPARATE_SENTINEL_BOT_TOKEN",
+    "chat_id": "REPLACE_WITH_OWNER_CHAT_ID"
+  }
+}

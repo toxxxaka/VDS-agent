@@ -6,6 +6,11 @@ All notable changes to VDS Agent are documented here.
 
 ### Added
 
+- Independent dependency-free Sentinel for an external host: DNS/TCP/TLS/HTTPS probes, thresholded Telegram down/recovery alerts, a hardened systemd timer, an interactive opt-in installer, configuration template and operations guide. The installer explains the separate-host requirement and the consequence of declining it.
+- Local operator CLI commands `vds-agent status` and `vds-agent doctor`, with human-readable and `--json` output for health checks and automation.
+- Desktop Support navigation and an authenticated support request form in the primary WebUI and isolated public demo. Requests are bounded, HTML-escaped for Telegram delivery, and audited.
+- Safe Console diagnostics for disk, network and OOM triage, swap capacity/activity, and kernel reclaim/allocation counters.
+
 - Separate, rotating nginx log templates for the public site, VDS Agent and
   X-Agent, with an operational guide that keeps default nginx logs intact.
 

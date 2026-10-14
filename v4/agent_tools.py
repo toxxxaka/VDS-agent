@@ -506,13 +506,14 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
     option = arguments.get("option", "")
     allowed = {
         "pressure": {""}, "oom": {"history"},
+        "swap": {"usage", "activity"}, "kernel": {"reclaim", "allocfail"},
         "network": {"summary", "top", "interfaces", "errors", "connections", "listen", "syn", "dns", "routes"},
         "services": {"failed", "restart-count"}, "service": LOG_UNITS,
         "logs": {"errors", "kernel", "ssh"}, "timers": {""}, "boot": {"analyze"},
         "security": {"overview", "ssh", "fail2ban", "firewall", "ports", "updates"},
         "disk": {"usage", "inodes", "health", "growth"}, "backup": {"status", "verify"},
         "monitoring": {"health", "collectors", "alerts"}, "incidents": {"recent"},
-        "diagnose": {"cpu", "memory", "io", "server", "nginx", "docker"},
+        "diagnose": {"cpu", "memory", "io", "disk", "network", "oom", "server", "nginx", "docker"},
         "compare": {"cpu"}, "changes": {"24h"}, "report": {"24h"},
     }
     if topic not in allowed or option not in allowed[topic]:
@@ -527,6 +528,19 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
             except OSError:
                 values[name] = {"available": False}
         return {"pressure": values}
+    if topic in {"swap", "kernel"}:
+        try:
+            vmstat = {key: int(value) for key, value in (line.split()[:2] for line in Path("/proc/vmstat").read_text().splitlines())}
+        except (OSError, ValueError):
+            vmstat = {}
+        if topic == "swap":
+            swap = psutil.swap_memory()
+            if option == "usage":
+                return {"swap": {"total_bytes": swap.total, "used_bytes": swap.used, "free_bytes": swap.free, "percent": swap.percent}}
+            return {"swap_activity": {"page_in": vmstat.get("pswpin", 0), "page_out": vmstat.get("pswpout", 0), "unit": "pages since boot"}}
+        if option == "reclaim":
+            return {"kernel_reclaim": {key: vmstat.get(key, 0) for key in ("pgscan_kswapd", "pgscan_direct", "pgsteal_kswapd", "pgsteal_direct", "pgfault", "pgmajfault")}, "unit": "events since boot"}
+        return {"kernel_allocfail": {key: vmstat.get(key, 0) for key in ("allocstall", "allocstall_dma", "allocstall_dma32", "allocstall_normal", "pgmajfault", "oom_kill")}, "unit": "events since boot"}
     if topic == "oom":
         return {"oom": _journal_fixed(["-k", "--grep", "Out of memory|Killed process", "--since", "30 days ago", "--lines", "80"])}
     if topic == "network":
@@ -618,6 +632,14 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
             evidence = diagnose_load({"limit": 5})
             processes = process_inspect({"limit": 5, "sort": "io"})
             return {"focus": "io", "measurement_window_seconds": evidence["measurement_window_seconds"], "disk_io_cumulative_bytes": evidence["disk_io_cumulative_bytes"], "top_processes": processes["processes"], "io_scope": "per-process counters are cumulative since process start"}
+        if option == "disk":
+            evidence = diagnose_load({"limit": 5})
+            return {"focus": "disk", "filesystems": console_diagnostic({"topic": "disk", "option": "usage"}), "disk_io_cumulative_bytes": evidence["disk_io_cumulative_bytes"], "top_processes": process_inspect({"limit": 5, "sort": "io"})["processes"], "io_scope": "per-process counters are cumulative since process start"}
+        if option == "network":
+            return {"focus": "network", "summary": console_diagnostic({"topic": "network", "option": "summary"}), "errors": console_diagnostic({"topic": "network", "option": "errors"}), "connections": console_diagnostic({"topic": "network", "option": "connections"}), "dns": console_diagnostic({"topic": "network", "option": "dns"}), "routes": console_diagnostic({"topic": "network", "option": "routes"})}
+        if option == "oom":
+            evidence = diagnose_load({"limit": 5})
+            return {"focus": "oom", "memory": evidence["memory"], "top_processes": process_inspect({"limit": 5, "sort": "memory"})["processes"], "oom_history": console_diagnostic({"topic": "oom", "option": "history"})}
         if option == "server":
             return {"focus": "server", "status": server_status({}), "health": self_monitoring_report()}
         if option == "nginx": return {"service": service_status({"units": ["nginx.service"]}), "logs": service_logs({"unit": "nginx.service", "lines": 30, "minutes": 120}), "connections": console_diagnostic({"topic": "network", "option": "connections"})}

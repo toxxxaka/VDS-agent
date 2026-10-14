@@ -39,6 +39,12 @@ metric freshness and an authenticated read-only health request. The nginx
 configuration only needs reload after an nginx vhost change and after a
 successful `nginx -t`.
 
+## Optional external Sentinel
+
+The future full-release installer must offer External Sentinel as an explicit opt-in. Explain that it must run on a different host or trust domain from the monitored VDS. Choosing **no** changes nothing in the main installation: metrics, incidents, Telegram, WebUI and MCP remain available while the host is running. The trade-off is that no component on the failed host can report a full host, network, DNS or power outage.
+
+Choosing **yes** does not give the primary installer remote access to another server. Instead, give the administrator the tracked `sentinel/` bundle and [External Sentinel instructions](SENTINEL.md). On the external host, `sentinel/install.sh` validates the private configuration, explains its limited role, asks for confirmation, and installs only its own unprivileged systemd timer. It never alters nginx, SSH, Docker, firewall rules or the monitored host.
+
 ## nginx project logs
 
 Keep default nginx logs intact and place project traffic in separate directories:
@@ -85,7 +91,11 @@ its values and file ownership. Validate it before a release:
 
 ```bash
 PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli check-config
+PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli status
+PYTHONPATH=/opt/monitoringbot /usr/bin/python3 -m v4.cli doctor
 ```
+
+`status` reports unit state, metric freshness and SQLite health. `doctor` also validates the non-secret configuration. Both commands are safe for routine diagnostics: they do not restart units or modify server configuration; `--json` is available for scripts.
 
 The Flight Recorder, adaptive baseline, Telegram outbox and external heartbeat
 are disabled by default. When `telegram_outbox` is enabled, the bot queues messages

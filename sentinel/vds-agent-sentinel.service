@@ -1,0 +1,25 @@
+[Unit]
+Description=VDS Agent external availability Sentinel
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=vds-sentinel
+Group=vds-sentinel
+ExecStart=/usr/local/lib/vds-agent-sentinel/vds-agent-sentinel.py --config /etc/vds-agent-sentinel/sentinel.json --state /var/lib/vds-agent-sentinel/state.json
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StateDirectory=vds-agent-sentinel
+StateDirectoryMode=0750

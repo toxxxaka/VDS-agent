@@ -24,7 +24,7 @@ SCRIPTS={
  'docker-health':('docker-health.sh','Inspect Docker health and restart loops','root, read-only'),
  'fetch-check-tw':('fetch-check-tw.sh','Download external check only after SHA-256 verification','downloads external code'),
  'ispmanager-login-link':('ispmanager-login-link.sh','Create an ISPmanager login link','root, credential-sensitive output'),
- 'tw-helper':('tw-helper.sh','Timeweb helper script','review before use'),
+ 'tw-helper':('tw-helper.sh','Helper Script','review before use'),
  'tw-script1':('tw_script1.sh','Extended diagnostic snapshot','root, read-only'),
  'tw-script2':('tw_script2.py','Extended diagnostic snapshot','root, read-only'),
  'tw-script2-guide':('tw_script2.md','Guide for extended diagnostic snapshot','documentation'),

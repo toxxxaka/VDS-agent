@@ -22,9 +22,11 @@ BASICS
   metrics [1h|6h|24h|7d|30d]    telemetry history
 
 DIAGNOSIS
-  diagnose cpu|memory|io|server|nginx|docker
+  diagnose cpu|memory|io|disk|network|oom|server|nginx|docker
   pressure                      CPU / memory / I/O PSI
   oom history                   recent OOM killer events
+  swap usage|activity           swap capacity and page-in/page-out counters
+  kernel reclaim|allocfail      memory-reclaim and allocation-failure counters
   compare cpu 1h 24h            CPU average comparison
   report 24h                    health and incident summary
 
@@ -50,12 +52,14 @@ arguments. Shell syntax, paths, pipelines and arbitrary commands are refused."""
 
 TOPIC_HELP = {
     "network": "network <summary|top|interfaces|errors|connections|listen|syn|dns|routes>",
-    "diagnose": "diagnose <cpu|memory|io|server|nginx|docker>",
+    "diagnose": "diagnose <cpu|memory|io|disk|network|oom|server|nginx|docker>",
     "security": "security <overview|ssh|fail2ban|firewall|ports|updates>",
     "disk": "disk <usage|inodes|health|growth>",
     "monitoring": "monitoring <health|collectors|alerts>",
     "services": "services [failed|restart-count]",
     "logs": f"logs [<unit>|errors|kernel|ssh]\nAllowed units: {SERVICE_NAMES}",
+    "swap": "swap <usage|activity>",
+    "kernel": "kernel <reclaim|allocfail>",
 }
 
 COMMANDS = {
@@ -83,7 +87,7 @@ def parse(command: Any) -> tuple[str, dict[str, Any]]:
         raise ToolError("shell syntax is not supported; type help for allowed commands")
     name, arguments = parts[0].lower(), [value.lower() for value in parts[1:]]
     if name == "help":
-        if len(arguments) > 1: raise _usage("help [network|diagnose|security|disk|monitoring|services|logs]")
+        if len(arguments) > 1: raise _usage("help [network|diagnose|security|disk|monitoring|services|logs|swap|kernel]")
         return "help", {"topic": arguments[0] if arguments else ""}
     if name in COMMANDS and not arguments:
         return COMMANDS[name]
@@ -120,6 +124,10 @@ def parse(command: Any) -> tuple[str, dict[str, Any]]:
     if name in {"pressure", "timers"}:
         if arguments: raise _usage(name)
         return "console_diagnostic", {"topic": name, "option": ""}
+    if name in {"swap", "kernel"}:
+        allowed = {"swap": {"usage", "activity"}, "kernel": {"reclaim", "allocfail"}}[name]
+        if len(arguments) != 1 or arguments[0] not in allowed: raise _usage(TOPIC_HELP[name])
+        return "console_diagnostic", {"topic": name, "option": arguments[0]}
     if name == "oom":
         if arguments != ["history"]: raise _usage("oom history")
         return "console_diagnostic", {"topic": "oom", "option": "history"}
@@ -127,8 +135,8 @@ def parse(command: Any) -> tuple[str, dict[str, Any]]:
         if arguments != ["analyze"]: raise _usage("boot analyze")
         return "console_diagnostic", {"topic": "boot", "option": "analyze"}
     if name in {"diagnose", "security", "monitoring", "backup"}:
-        usage = TOPIC_HELP.get(name, f"{name} <{'cpu|memory|io|server|nginx|docker' if name == 'diagnose' else 'status|verify'}>")
-        allowed = {"diagnose": {"cpu", "memory", "io", "server", "nginx", "docker"}, "security": {"overview", "ssh", "fail2ban", "firewall", "ports", "updates"}, "monitoring": {"health", "collectors", "alerts"}, "backup": {"status", "verify"}}[name]
+        usage = TOPIC_HELP.get(name, f"{name} <{'cpu|memory|io|disk|network|oom|server|nginx|docker' if name == 'diagnose' else 'status|verify'}>")
+        allowed = {"diagnose": {"cpu", "memory", "io", "disk", "network", "oom", "server", "nginx", "docker"}, "security": {"overview", "ssh", "fail2ban", "firewall", "ports", "updates"}, "monitoring": {"health", "collectors", "alerts"}, "backup": {"status", "verify"}}[name]
         if len(arguments) != 1 or arguments[0] not in allowed: raise _usage(usage)
         return "console_diagnostic", {"topic": name, "option": arguments[0]}
     if name == "incidents":
@@ -147,15 +155,11 @@ def parse(command: Any) -> tuple[str, dict[str, Any]]:
     raise ToolError("unknown command; type help for the allow-listed command list")
 
 
-def _raise(error: Exception):
-    raise error
-
-
 def run(command: Any, actor: str) -> dict[str, Any]:
     tool, arguments = parse(command)
     if tool == "help":
         topic = arguments["topic"]
-        if topic and topic not in TOPIC_HELP: raise _usage("help [network|diagnose|security|disk|monitoring|services|logs]")
+        if topic and topic not in TOPIC_HELP: raise _usage("help [network|diagnose|security|disk|monitoring|services|logs|swap|kernel]")
         return {"command": "help", "tool": "help", "read_only": True, "text": TOPIC_HELP[topic] if topic else HELP}
     result = execute(tool, arguments, actor=actor)
     return {"command": str(command).strip(), "tool": tool, "read_only": True, "result": result}

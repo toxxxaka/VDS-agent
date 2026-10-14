@@ -19,3 +19,4 @@
 | Product stage 1 | ready for review | 2026-10-12 | Stdlib typed non-secret config, package metadata and `vds-agent check-config`; `v3.py` remains compatible entry point. |
 | Product stage 2 | ready for review | 2026-10-12 | SQLite durable task lifecycle, cancellation/idempotency/retry/recovery plus opt-in outbox implemented in source. |
 | Product stage 3 | ready for review | 2026-10-12 | Rollups, PSI/inodes, Flight Recorder behind a flag, alert state machine, shadow-only baseline and DNS/HTTP/TLS availability extensions implemented in source. |
+| External Sentinel | ready for review | 2026-10-14 | Separate dependency-free DNS/TCP/TLS/HTTPS observer, thresholded alert/recovery semantics, hardened timer, installer choice and operational documentation. It is installed only on an independent host. |

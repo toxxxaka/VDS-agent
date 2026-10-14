@@ -48,7 +48,9 @@ The mobile-first HTTPS interface works in a regular browser and Telegram Mini Ap
 - **AI** — a server-side streaming proxy to the optional private Timeweb Agent. The browser never receives its token.
 - **Tools** — incidents, activity/audit, diagnostics, backups, client script library, firewall, TLS/password/network tools, SSH and power actions.
 
-Tools also includes **Safe Console**, a Linux-shell-shaped read-only console. It offers history, completions and contextual help for fixed diagnostics such as `processes cpu`, `services failed`, `logs nginx.service`, `network sockets` and `metrics 24h`. It rejects shell syntax, arbitrary paths and unrecognised arguments; it never executes user-entered shell commands.
+Tools also includes **Safe Console**, a Linux-shell-shaped read-only console. It offers history, completions and contextual help for fixed diagnostics such as `processes cpu`, `services failed`, `logs nginx.service`, `network connections`, `diagnose disk`, `diagnose network`, `swap usage` and `kernel reclaim`. It rejects shell syntax, arbitrary paths and unrecognised arguments; it never executes user-entered shell commands.
+
+On desktop, the top navigation also offers **Support**: users can open an email to `cyber.security494@simplelogin.com` or send a bounded message to the owner Telegram chat. The message form explicitly asks for a reply contact. Support requests require the same authenticated browser session as the rest of the WebUI; message text is capped at 2,000 characters, HTML-escaped before Telegram delivery, and audited.
 
 ### MCP
 
@@ -92,6 +94,24 @@ All optional controls are disabled by default. Validate a prospective non-secret
 ```bash
 python3 -m v4.cli check-config
 ```
+
+### Local operator CLI
+
+The installed `vds-agent` command gives an administrator two non-destructive local checks. It does not restart services, modify host configuration or expose secrets:
+
+```bash
+vds-agent status          # service state, telemetry freshness and SQLite summary
+vds-agent doctor          # configuration validation plus local health checks
+vds-agent status --json   # same information for scripts and monitoring
+```
+
+`status` and `doctor` return exit code `0` when healthy and `1` when attention is required. `check-config` returns `2` for an invalid configuration.
+
+## External outage Sentinel
+
+The optional [External Sentinel](docs/SENTINEL.md) runs on a separate host and checks VDS Agent HTTPS endpoints from outside the monitored VDS. It distinguishes DNS, TCP, TLS and HTTPS failures, sends one thresholded `DOWN` alert and one recovery alert, and retains a small local state file on the observer.
+
+Sentinel is intentionally separate from the normal VDS Agent installation. Without it, all local monitoring, WebUI, Telegram, MCP and incident functions continue to work; the unavoidable limitation is that a completely unavailable monitored host cannot report its own outage. Sentinel has no inbound API, SSH key, provider access, VDS Agent session, TOTP secret or ability to change the monitored host.
 
 ## Security model
 
@@ -212,6 +232,7 @@ permissions and validation commands are in [Project nginx logs](docs/LOGGING.md)
 - [Firewall model](docs/FIREWALL.md)
 - [Operations and release procedure](docs/OPERATIONS.md)
 - [Project nginx logs](docs/LOGGING.md)
+- [External outage Sentinel](docs/SENTINEL.md)
 - [Recovery runbooks](runbooks/)
 - [Security policy](SECURITY.md)
 
