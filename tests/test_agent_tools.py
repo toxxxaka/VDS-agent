@@ -237,6 +237,22 @@ class ConsolePresentationTests(unittest.TestCase):
             with patch.object(snapshots.psutil, "cpu_times", return_value=(1.0, 1.0)):
                 self.assertEqual(snapshots.live_cpu_percent(), 12.5)
 
+    def test_console_diagnoses_have_distinct_evidence_focus(self):
+        from v4 import agent_tools
+        evidence = {
+            "measurement_window_seconds": 1.0,
+            "cpu": {"percent": 12.0, "cores": 1, "user": 8.0, "system": 3.0, "iowait": 1.0},
+            "load_average": {"1m": 0.1, "5m": 0.1, "15m": 0.1},
+            "memory": {"used_bytes": 1, "available_bytes": 2, "percent": 33.0, "swap_percent": 0.0},
+            "disk_io_cumulative_bytes": {"read": 3, "write": 4},
+            "top_processes": [],
+        }
+        with patch.object(agent_tools, "diagnose_load", return_value=evidence), patch.object(agent_tools, "process_inspect", return_value={"processes": []}), patch.object(agent_tools, "server_status", return_value={}), patch.object(agent_tools, "self_monitoring_report", return_value={"healthy": True, "metrics": {"age_seconds": 1}}):
+            self.assertEqual(agent_tools.console_diagnostic({"topic": "diagnose", "option": "cpu"})["focus"], "cpu")
+            self.assertEqual(agent_tools.console_diagnostic({"topic": "diagnose", "option": "memory"})["focus"], "memory")
+            self.assertEqual(agent_tools.console_diagnostic({"topic": "diagnose", "option": "io"})["focus"], "io")
+            self.assertEqual(agent_tools.console_diagnostic({"topic": "diagnose", "option": "server"})["focus"], "server")
+
 class LibraryUrlTests(unittest.TestCase):
     def test_temporary_downloads_use_monitoring_hostname(self):
         from v4 import library

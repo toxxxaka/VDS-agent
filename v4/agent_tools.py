@@ -164,10 +164,11 @@ def diagnose_load(arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     io = psutil.disk_io_counters()
     processes = _process_items(sample_seconds=0.5)
     processes.sort(key=lambda item: (item["cpu_percent"], item["rss_bytes"]), reverse=True)
+    cpu_percent = round(max(0.0, min(100.0, 100.0 - float(getattr(cpu_times, "idle", 0.0)))), 1)
     return {
         "measurement_window_seconds": 1.0,
         "load_average": dict(zip(("1m", "5m", "15m"), (round(value, 2) for value in os.getloadavg()))),
-        "cpu": {"percent": round(psutil.cpu_percent(interval=None), 1), "cores": psutil.cpu_count() or 1, "user": round(getattr(cpu_times, "user", 0.0), 1), "system": round(getattr(cpu_times, "system", 0.0), 1), "iowait": round(getattr(cpu_times, "iowait", 0.0), 1), "steal": round(getattr(cpu_times, "steal", 0.0), 1)},
+        "cpu": {"percent": cpu_percent, "cores": psutil.cpu_count() or 1, "user": round(getattr(cpu_times, "user", 0.0), 1), "system": round(getattr(cpu_times, "system", 0.0), 1), "iowait": round(getattr(cpu_times, "iowait", 0.0), 1), "steal": round(getattr(cpu_times, "steal", 0.0), 1)},
         "memory": {"used_bytes": memory.used, "available_bytes": memory.available, "percent": memory.percent, "swap_percent": swap.percent},
         "disk_io_cumulative_bytes": {"read": io.read_bytes if io else 0, "write": io.write_bytes if io else 0},
         "top_processes": processes[:limit],
@@ -604,7 +605,21 @@ def console_diagnostic(arguments: dict[str, Any] | None = None) -> dict[str, Any
         return {"active_incidents": incidents_query({"status": "active"}), "health": report.get("checks", {})}
     if topic == "incidents": return incidents_query({"status": "all"})
     if topic == "diagnose":
-        if option in {"cpu", "memory", "io", "server"}: return {"diagnosis": diagnose_load({"limit": 5}), "status": server_status({})}
+        # Each command deliberately returns its own evidence. A generic snapshot
+        # makes CPU, memory and I/O diagnostics indistinguishable.
+        if option == "cpu":
+            evidence = diagnose_load({"limit": 5})
+            return {"focus": "cpu", "measurement_window_seconds": evidence["measurement_window_seconds"], "cpu": evidence["cpu"], "load_average": evidence["load_average"], "top_processes": evidence["top_processes"]}
+        if option == "memory":
+            evidence = diagnose_load({"limit": 5})
+            processes = process_inspect({"limit": 5, "sort": "memory"})
+            return {"focus": "memory", "measurement_window_seconds": evidence["measurement_window_seconds"], "memory": evidence["memory"], "top_processes": processes["processes"]}
+        if option == "io":
+            evidence = diagnose_load({"limit": 5})
+            processes = process_inspect({"limit": 5, "sort": "io"})
+            return {"focus": "io", "measurement_window_seconds": evidence["measurement_window_seconds"], "disk_io_cumulative_bytes": evidence["disk_io_cumulative_bytes"], "top_processes": processes["processes"], "io_scope": "per-process counters are cumulative since process start"}
+        if option == "server":
+            return {"focus": "server", "status": server_status({}), "health": self_monitoring_report()}
         if option == "nginx": return {"service": service_status({"units": ["nginx.service"]}), "logs": service_logs({"unit": "nginx.service", "lines": 30, "minutes": 120}), "connections": console_diagnostic({"topic": "network", "option": "connections"})}
         if option == "docker": return {"service": service_status({"units": ["docker.service"]}), "status": _run(["/usr/bin/docker", "ps", "--format", "{{.Names}}\t{{.Status}}"], timeout=8, limit=6000)}
     if topic == "compare":
