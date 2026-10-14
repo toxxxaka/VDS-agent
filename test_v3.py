@@ -76,6 +76,28 @@ class SSHLoginMonitorTests(unittest.TestCase):
         finally:
             bot.AUTH_CONFIG_FILE, bot.AUTH_STATE_FILE, bot.totp_step = old_config, old_state, old_totp
 
+    def test_demo_callback_without_totp_explains_login_requirement(self):
+        callback = {
+            "update_id": 101,
+            "callback_query": {
+                "id": "callback-id",
+                "data": "demo:generate:7",
+                "from": {"id": 42},
+                "message": {"chat": {"id": 42, "type": "private"}},
+            },
+        }
+        sent = []
+        def telegram(method, _payload, **_kwargs):
+            if method == "getUpdates":
+                return {"ok": True, "result": [callback]}
+            self.assertEqual(method, "answerCallbackQuery")
+            return {"ok": True}
+        with patch.object(bot, "drain_outbox"), patch.object(bot, "telegram", side_effect=telegram), \
+             patch.object(bot, "authenticated", return_value=False), \
+             patch.object(bot, "send", side_effect=lambda message, **kwargs: sent.append((message, kwargs)) or True):
+            self.assertEqual(bot.poll(100), 101)
+        self.assertEqual(sent, [("Authentication required. Send: /login 123456", {"chat_id": "42"})])
+
     def test_power_confirmation_preserves_case(self):
         old_execute, old_send, old_recent = bot.execute_power_action, bot.send, bot.recent_totp
         received = []
