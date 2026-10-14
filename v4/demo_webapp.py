@@ -20,10 +20,8 @@ from . import webapp as core
 
 UI_DIR = Path(__file__).with_name("demo_ui")
 HTML = (UI_DIR / "index.html").read_text(encoding="utf-8")
-ASSETS = {"app.css": "text/css; charset=utf-8", "app.js": "application/javascript; charset=utf-8", "favicon.svg": "image/svg+xml"}
-DENIED_PREFIXES = (
-    "/api/actions/", "/api/firewall", "/api/backups", "/api/runbooks/", "/api/maintenance", "/api/incidents/close-all", "/api/library", "/download/",
-)
+ASSETS = {"app.css": "text/css; charset=utf-8", "app.js": "application/javascript; charset=utf-8", "demo-login.js": "application/javascript; charset=utf-8", "favicon.svg": "image/svg+xml"}
+DENIED_PREFIXES = ("/api/actions/power", "/api/firewall", "/api/backups")
 
 
 def _cookie(header: str, name: str) -> str:
@@ -83,7 +81,7 @@ class DemoHandler(core.Handler):
             self.reply(200, demo_access.status(request_token, reveal=True)); return
         if path == "/api/session":
             user, _ = self.auth()
-            self.reply(200, {"demo": True, "authenticated": bool(user)}); return
+            self.reply(200, {"totp": bool(user), "demo": True}); return
         if path.startswith(DENIED_PREFIXES):
             self.reply(404, {"error": "not available on the public demo"}); return
         user, session_user = self.auth()
@@ -120,14 +118,11 @@ class DemoHandler(core.Handler):
             with core.connect() as connection:
                 connection.execute("DELETE FROM pending_actions WHERE kind='demo_session' AND user_id=?", (token,))
             self.reply(200, {"ok": True}, {"Set-Cookie": "vds_demo=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"}); return
-        if path.startswith(DENIED_PREFIXES) or path in {"/api/totp", "/api/tools/password", "/api/tools/ssl", "/api/tools/checkhost", "/api/tools/cheburcheck"}:
+        if path.startswith(DENIED_PREFIXES) or path == "/api/totp":
             self.reply(404, {"error": "not available on the public demo"}); return
         user, session_user = self.auth()
         if not user:
             self.reply(401, {"error": "demo login required"}); return
-        # The remaining POST route is the allow-listed Safe Shell diagnostic.
-        if path != "/api/console":
-            self.reply(405, {"error": "public demo accepts diagnostics only"}); return
         super().do_POST()
 
 
